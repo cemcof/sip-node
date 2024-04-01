@@ -48,7 +48,7 @@ if arguments.config_file:
     if not arguments.organization_name:
         arguments.organization_name = config["Center"]["Identifier"]
     # API arguments should be present in the file - load them
-    api_config = config["LimsApi"]
+    api_config = config["SipApi"]
     if not arguments.lims_api_url:
         arguments.lims_api_url = api_config["BaseUrl"]
     if not arguments.lims_api_key:
