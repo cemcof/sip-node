@@ -198,16 +198,17 @@ class CryosparcWrapper:
         self.cluster = config["ComputationalCluster"]
 
 
-class CryosparcProcesingHandler(experiment.ExperimentModuleBase): 
+class CryosparcProcessingHandler(experiment.ExperimentModuleBase): 
 
     def provide_experiments(self):
         active_experiments = super().provide_experiments()
         return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), active_experiments)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
+        print("Cryosparcstep")
         cconf = self.config["CyrosparcConfig"]
         cw = CryosparcWrapper(exp_engine, cconf)
+        
         # cw.cluster.create_project()
-
 
     

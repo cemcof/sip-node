@@ -21,9 +21,9 @@ aparser = argparse.ArgumentParser(
 aparser.add_argument("--organization-name", "-o", dest="organization_name", help="An organization this node belongs to.")
 aparser.add_argument("--node-name", "-n", dest="node_name", help="Name of this node. Must be unique among all of the running nodes. Default is the hostname.")
 aparser.add_argument("--config-file", dest="config_file", help="Path to a yaml file that configures this node.")
-aparser.add_argument("--lims-api-url", "-u", dest="lims_api_url", help="Base URL of the LIMS HTTTP API.")
-aparser.add_argument("--lims-api-key", "-s", dest="lims_api_key", help="A key that is used to authorize organization in the LIMS API/")
-aparser.add_argument("--lims-api-https-proxy", "-p", dest="lims_api_https_proxy", help="A proxy server to be used to communicatet with LIMS API")
+aparser.add_argument("--sip-api-url", "-u", dest="sip_api_url", help="Base URL of the LIMS HTTTP API.")
+aparser.add_argument("--sip-api-key", "-s", dest="sip_api_key", help="A key that is used to authorize organization in the LIMS API/")
+aparser.add_argument("--sip-api-https-proxy", "-p", dest="sip_api_https_proxy", help="A proxy server to be used to communicatet with LIMS API")
 aparser.add_argument("--refresh-interval", "-r", dest="refresh_interval", default=6.0, type=float, help="How often to ping LIMS database, fetch/submit configuration and adjust executed modules accordingly. Default 15sec.")
 aparser.add_argument("-d --debug", dest="debug_mode", action='store_true')
 arguments = aparser.parse_args()
@@ -49,17 +49,17 @@ if arguments.config_file:
         arguments.organization_name = config["Center"]["Identifier"]
     # API arguments should be present in the file - load them
     api_config = config["SipApi"]
-    if not arguments.lims_api_url:
-        arguments.lims_api_url = api_config["BaseUrl"]
-    if not arguments.lims_api_key:
-        arguments.lims_api_key = api_config["SecretKey"]
+    if not arguments.sip_api_url:
+        arguments.sip_api_url = api_config["BaseUrl"]
+    if not arguments.sip_api_key:
+        arguments.sip_api_key = api_config["SecretKey"]
 
 if not arguments.organization_name:
     aparser.error("Organization name must be provided either by command line argument or through config file")
 
 # ========= Factories, edit them to provide required dependencies ===========
 def lims_api_session_provider():
-        return configuration.create_lims_session(arguments.lims_api_url, arguments.lims_api_key, arguments.lims_api_https_proxy)
+        return configuration.create_lims_session(arguments.sip_api_url, arguments.sip_api_key, arguments.sip_api_https_proxy)
 
 def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     engine = engine or exp.storage.engine
