@@ -16,6 +16,11 @@ class B2ShareDraft:
     
     def exists(self):
         return bool(self.draft_id)
+    
+    def get_record(self):
+        response = self.http_session.get(self.record_url())
+        response.raise_for_status()
+        return response.json()
         
     def record_url(self, absolute=False):
         if self.draft_id:
@@ -35,6 +40,10 @@ class B2ShareDraft:
         response.raise_for_status()
         published_draft = response.json()
         return published_draft["metadata"]["DOI"]
+    
+    def is_published(self):
+        record = self.get_record()
+        return record["metadata"]["publication_state"] == "published"
     
     def prepare_draft_metadata(self, title, metadata):
         # Convert metadata to b2share format
@@ -92,7 +101,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
             # Experiment must first be archived 
             if not exp.storage.state == experiment.StorageState.ARCHIVED:
                 # Not error - experiment might be just waiting for the archivation to compltet
-                self.logger.info("Not publishing experiment - must be archived first")
+                self.logger.info(f"Not publishing experiment {exp.secondary_id} - must be archived first and state is {exp.storage.state}")
                 return
             
             # Draft for the experiment must exist
@@ -102,7 +111,8 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
                 return
             
             # Draft publication
-            doi = b2_draft.publish_draft()
+            if not b2_draft.is_published():
+                doi = b2_draft.publish_draft()
 
             # Submit publication success to LIMS
             exp.exp_api.patch_experiment({"Publication":{
