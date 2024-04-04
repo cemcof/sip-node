@@ -41,6 +41,11 @@ class B2ShareDraft:
         published_draft = response.json()
         return published_draft["metadata"]["DOI"]
     
+
+    def get_doi(self):
+        record = self.get_record()
+        return record["metadata"]["doi"]
+    
     def is_published(self):
         record = self.get_record()
         return record["metadata"]["publication_state"] == "published"
@@ -111,8 +116,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
                 return
             
             # Draft publication
-            if not b2_draft.is_published():
-                doi = b2_draft.publish_draft()
+            doi = b2_draft.publish_draft() if b2_draft.is_published() else b2_draft.get_doi()
 
             # Submit publication success to LIMS
             exp.exp_api.patch_experiment({"Publication":{
