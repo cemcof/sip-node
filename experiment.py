@@ -68,24 +68,15 @@ class ExperimentApi:
 
     def change_state(self, state):
         state_map = {
-            JobState: "State",
-            ProcessingState: "Processing.State",
-            StorageState: "Storage.State",
-            PublicationState: "Publication.State"
+            JobState: {"State": state.value},
+            ProcessingState: {"Processing": {"State": state.value}},
+            StorageState: {"Storage": {"State": state.value}},
+            PublicationState: {"Publication": {"State": state.value}}
         }
 
         # Now patch experiment accrding to state param
-        state_path = state_map[type(state)]
-        # Json patch
-        json_patch = [
-            {
-                "op": "replace",
-                "path": f"/{state_path}",
-                "value": state.value
-            }
-        ]
-    
-        self._http_session.patch(f"experiments/{self.exp_id}", json=json_patch)
+        state_patch_data = state_map[type(state)]
+        self.patch_experiment(state_patch_data)
 
     def upload_document_files(self, document_id, files, append=False):
         files = files if isinstance(files, list) else [files]
@@ -122,13 +113,13 @@ class ExperimentProcessingWrapper:
 
     @property
     def state(self):
-        return ProcessingState(self._exp_data["State"])
+        return ProcessingState(self.processing_data["State"])
     
     @state.setter
     def state(self, value: ProcessingState):
         if (self.state != value):
-            self.exp_api.patch_experiment({"Processing": {"State": str(value)}})
-            self.reload()
+            self.exp_api.patch_experiment({"Processing": {"State": value.value}})
+            self.processing_data["State"] = value
 
     
     @property
@@ -185,11 +176,10 @@ class ExperimentStorageWrapper:
         return StorageState(self._exp_data["State"])
     
     @state.setter
-    def state(self, value: JobState):
+    def state(self, value: StorageState):
         if (self.state != value):
-            self.exp_api.patch_experiment({"Storage": {"State": str(value)}})
-            self.reload()
-
+            self.exp_api.patch_experiment({"Storage": {"State": value.value}})
+            self._exp_data["State"] = value.value
 
 
 class ExperimentPublicationWrapper:

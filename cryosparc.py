@@ -142,7 +142,7 @@ if __name__ == "__main__":
     setup_parser.set_defaults(func="create_project")
     setup_parser.add_argument("-p", "--project-path", dest="session_id", type=pathlib.Path, help="Path to the project, last part of this path will be used as a project name/title", required=True)
     setup_parser.add_argument("-c", "--cluster", dest="cluster", help="Computational cluster", required=True)
-    setup_parser.add_argument("-w", "--workflow_file", dest="workflow", help="Path to the file with JSON workflow for the project, - for stdin", required=True, type=argparse.FileType(encoding='utf-8'))
+    setup_parser.add_argument("-w", "--workflow-file", dest="workflow", help="Path to the file with JSON workflow for the project, - for stdin", required=True, type=argparse.FileType(encoding='utf-8'))
 
     run_parser = subparsers.add_parser("run")
     run_parser.set_defaults(func="run_project_session")
@@ -190,12 +190,53 @@ class CryosparcWrapper:
                  exp_engine: experiment.ExperimentStorageEngine, 
                  config: dict): 
         self.exp_engine = exp_engine
+        self.exp = exp_engine.exp
         self.config = config
+        self.python_exec = config.get("PythonExec", "python3")
         self.cm_path = config["CmPath"]
         self.projects_dir = config["ProjectsDir"]
         self.project_name = exp_engine.exp.secondary_id
+        self.project_path = pathlib.Path(self.projects_dir) / self.project_name
         self.email = config["Email"]
         self.cluster = config["ComputationalCluster"]
+
+    def _invoke_cryosparc_cli(self, subprogram: str, args: dict, stdin: str):
+        args = [self.python_exec, __file__, "-e", self.email, "--cm", self.cm_path, subprogram]
+        for key, value in args.items():
+            args.append(key)
+            args.append(value)
+            
+        self.exp_engine.logger.info(f"Invoking cryosparc engine: {' '.join(args)}")
+        pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True)
+        return pc.stdout, pc.stderr
+
+    def create_project(self):
+        args = {
+            "-p": str(self.project_path),
+            "-c": self.cluster,
+            "-w": "-"
+        }
+
+        # Prepare workflow JSON
+        workflow = "TODO"
+
+        # Invoke the cryosparc engine
+        stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=workflow)
+        self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
+        self.exp.processing.pid = stdout
+        self.exp.processing.state = experiment.ProcessingState.READY
+    
+    def run_project(self):
+        project_id, session_id = self.exp.processing.pid.split("/")
+        args = {
+            "--pid": project_id,
+            "--sid": session_id
+        }
+
+        self._invoke_cryosparc_cli("run", args, stdin="")
+        self.exp_engine.logger.info(f"Started cryosparc project {project_id} and session {session_id}")
+        self.exp.processing.state = experiment.ProcessingState.RUNNING
+        
 
 
 class CryosparcProcessingHandler(experiment.ExperimentModuleBase): 
