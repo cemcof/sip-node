@@ -44,7 +44,7 @@ class B2ShareDraft:
 
     def get_doi(self):
         record = self.get_record()
-        return record["metadata"]["doi"]
+        return record["metadata"]["DOI"]
     
     def is_published(self):
         record = self.get_record()
