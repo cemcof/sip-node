@@ -116,7 +116,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
                 return
             
             # Draft publication
-            doi = b2_draft.publish_draft() if b2_draft.is_published() else b2_draft.get_doi()
+            doi = b2_draft.publish_draft() if not b2_draft.is_published() else b2_draft.get_doi()
 
             # Submit publication success to LIMS
             exp.exp_api.patch_experiment({"Publication":{
