@@ -134,6 +134,29 @@ class EmMoviesHandler:
 
         return (first_movie, first_meta, gain_ref)
     
+    def set_importmovie_info(self, workflow: list, processing_source_path: pathlib.Path):
+        movies_info = self.find_movie_information()
+        
+        if not movies_info:
+            return None # There is no movie for the experiment - not ready to create the project, not enough information
+                
+        for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
+            # 1) Path to the source files
+            path_to_movies_relative : pathlib.Path = self.storage_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
+            prot["filesPath"] = str(processing_source_path / path_to_movies_relative) 
+            # 2) Pattern of the source files and movie suffix
+            movie_path = movies_info[0]
+            prot["filesPattern"] = f"*{movie_path.suffix}"
+            prot["movieSuffix"] = movie_path.suffix
+            # 3) Gain file, if any
+            if movies_info[2]:
+                gain_reference = self.convert_gain_reference(movies_info[2])
+                # Set reference to the gainfile for scipion
+                prot["gainFile"] = str(processing_source_path / gain_reference)
+
+        return movies_info
+        
+    
 class WorkflowWrapper:
     def __init__(self, workflow: list) -> None:
         self.workflow = workflow

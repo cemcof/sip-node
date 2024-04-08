@@ -330,25 +330,10 @@ class ScipionExpWrapper(ScipionWrapper):
         protocols = json.loads(json.dumps(protocols)) # Deep copy
         movies_handler = processing_tools.EmMoviesHandler(self.storage_engine)
 
-        # We must define for: 
-        for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", protocols):
-            movies_info = movies_handler.find_movie_information()
-            if not movies_info:
-                return None # There is no movie for the experiment - not ready to create the project, not enough information
-            # 1) Path to the source files
-            path_to_movies_relative : pathlib.Path = self.storage_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
-            prot["filesPath"] = str(self._get_processing_source_path() / path_to_movies_relative) 
-            # 2) Pattern of the source files and movie suffix
-            movie_path = movies_info[0]
-            prot["filesPattern"] = f"*{movie_path.suffix}"
-            prot["movieSuffix"] = movie_path.suffix
-            # 3) Gain file, if any
-            if movies_info[2]:
-                gain_reference = movies_handler.convert_gain_reference(movies_info[2])
-                # Set reference to the gainfile for scipion
-                prot["gainFile"] = str(self._get_processing_source_path() / gain_reference)
-
-
+        movie_info = movies_handler.set_importmovie_info(protocols, self._get_processing_source_path())
+        if not movie_info: # Not ready
+            return None
+            
         # Make empty strings null - TODO this is bad behavior of IConfigurationSection on LIMS side - quick dirty fix
         for prot in protocols:
             for k, v in prot.items():

@@ -210,7 +210,13 @@ class CryosparcWrapper:
         self.exp_engine.logger.info(f"Invoking cryosparc engine: {' '.join(args)}")
         pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True)
         return pc.stdout, pc.stderr
-
+    
+    def _get_processing_source_path(self):
+        if "SourceDataRoot" in self.config and self.config["SourceDataRoot"]:
+            return pathlib.Path(self.scipion_config["SourceDataRoot"]) / self.exp.secondary_id
+        else:
+            return self.exp_engine.resolve_target_location()
+        
     def create_project(self):
         args = {
             "-p": str(self.project_path),
@@ -219,12 +225,16 @@ class CryosparcWrapper:
         }
 
         # Prepare workflow JSON
+        # Copy protocols 
+        protocols: list = json.loads(json.dumps(protocols)) # Deep copy
         em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
-        em_handler.
-        workflow = "TODO"
+        movie_info = em_handler.set_importmovie_info(protocols, self._get_processing_source_path())
+
+        if not movie_info: # Not ready
+            return None
 
         # Invoke the cryosparc engine
-        stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=workflow)
+        stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(protocols))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout
         self.exp.processing.state = experiment.ProcessingState.READY
