@@ -4,6 +4,7 @@ import os, sys, re, json, pathlib
 from io import TextIOWrapper
 import subprocess
 import argparse
+import processing_tools
 
 import numpy as np
 import processing_tools
@@ -218,6 +219,8 @@ class CryosparcWrapper:
         }
 
         # Prepare workflow JSON
+        em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
+        em_handler.
         workflow = "TODO"
 
         # Invoke the cryosparc engine
