@@ -155,7 +155,7 @@ class EmMoviesHandler:
                 prot["gainFile"] = str(processing_source_path / gain_reference)
 
         return movies_info
-        
+    
     
 class WorkflowWrapper:
     def __init__(self, workflow: list) -> None:

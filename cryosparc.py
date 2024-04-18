@@ -24,7 +24,7 @@ class CryosparcEngine:
         self.rtp = client.CommandClient(host=self.host, port=self.command_rtp_port)
         self.user_id = self.cli.get_id_by_email(email)
 
-    def _configure_project(self, project_id, session_id, workflow: processing_tools.WorkflowWrapper):
+    def _configure_project(self, project_id, session_id, workflow: dict):
 
         # Set compute parameters
         cluster = self.compute_configuration["cluster"]
@@ -40,55 +40,55 @@ class CryosparcEngine:
         for key, value in compute_config.items():
             self.rtp.update_compute_configuration(project_uid=project_id, session_uid=session_id, key=key, value=value)
 
-        # Set exposure group parameters - data path, movie postfix and gain file, if any
-        exposure_config = {
-            "file_engine_watch_path_abs": workflow.find("filesPath"),
-            "file_engine_filter": workflow.find("moviesSuffix"),
-            "gainref_path": workflow.find("gainFile", None)
-        }
-
-        for key, value in exposure_config.items():
-            if value is not None:
-                self.rtp.exposure_group_update_value(project_uid=project_id, session_uid=session_id, exp_group_id=1, name=key, value=value)
+        # Set exposure group parameters
+        for expkey, expval in workflow["exposure"].items():
+            if expval is not None:
+                self.rtp.exposure_group_update_value(project_uid=project_id, session_uid=session_id, exp_group_id=1, name=expkey, value=expval)
+                
         self.rtp.exposure_group_finalize_and_enable(project_uid=project_id, session_uid=session_id, exp_group_id=1)
 
-        # Set session parameters
-        apix = workflow.find("pixelSize")
-        session_params = {
-            "mscope_params": {
-                "gainref_flip_y": "tif" in workflow.find("movieSuffix"),
-                "psize_A": apix,
-                "accel_kv": workflow.find("voltage"),
-                "cs_mm": workflow.find("sphericalAberration"),
-                "total_dose_e_per_A2": workflow.find("dosePerFrame"), # TODO - compute correct frame dose
-            },
-            "motion_settings": {
-                "res_max_align": np.ceil(4.0*apix),
-                "bfactor": 300,
-            },
-            "ctf_settings": {
-                "res_max_align": np.floor(3.0*apix),
-                "df_search_min": workflow.find("minDefocus"),
-                "df_search_max": workflow.find("maxDefocus"),
-            },
-            "blob_pick": {
-                "diameter": workflow.find("particleDiameter") * 0.8,
-                "diameter_max": workflow.find("particleDiameter") * 1.2,
-            },
-            "extraction": {
-                "box_size_pix": workflow.find("particleDiameter") * 1.5 / apix
-            }
-        }
-
-        for sec, params in session_params.items():
+        # Some presets 
+        workflow["mscope_params"]["gainref_flip_y"] = "tif" in workflow["exposure"]["file_engine_filter"]
+        # Del exposure
+        del workflow["exposure"]
+        
+        # Iterate and set the rest params for the session
+        for sec, params in workflow.items():
             for key, value in params.items():
                 self.rtp.set_param(project_uid=project_id, session_uid=session_id, param_sec=sec, param_name=key, value=value)
 
+        # DELME
+        # apix = workflow.find("pixelSize")
+        # session_params = {
+        #     "mscope_params": {
+        #         "gainref_flip_y": "tif" in workflow.find("movieSuffix"),
+        #         "psize_A": apix,
+        #         "accel_kv": workflow.find("voltage"),
+        #         "cs_mm": workflow.find("sphericalAberration"),
+        #         "total_dose_e_per_A2": workflow.find("dosePerFrame"), # TODO - compute correct frame dose
+        #     },
+        #     "motion_settings": {
+        #         "res_max_align": np.ceil(4.0*apix),
+        #         "bfactor": 300,
+        #     },
+        #     "ctf_settings": {
+        #         "res_max_align": np.floor(3.0*apix),
+        #         "df_search_min": workflow.find("minDefocus"),
+        #         "df_search_max": workflow.find("maxDefocus"),
+        #     },
+        #     "blob_pick": {
+        #         "diameter": workflow.find("particleDiameter") * 0.8,
+        #         "diameter_max": workflow.find("particleDiameter") * 1.2,
+        #     },
+        #     "extraction": {
+        #         "box_size_pix": workflow.find("particleDiameter") * 1.5 / apix
+        #     }
+        # }
 
     def create_project(self, project_path: pathlib.Path, workflow):
         project_dir, project_name = project_path.parent, str(project_path.name)
         project_uid = self.cli.create_empty_project(owner_user_id=self.user_id, project_container_dir=project_dir, title=project_name)
-        workflow = processing_tools.WorkflowWrapper(workflow)
+        # workflow = processing_tools.WorkflowWrapper(workflow)
 
         # Create a new Live session
         session_uid = self.rtp.create_new_live_workspace(project_uid=project_uid, created_by_user_id=self.user_id, title=f"{project_name} Live Session")
@@ -226,18 +226,27 @@ class CryosparcWrapper:
 
         # Prepare workflow JSON
         # Copy protocols 
-        protocols: list = json.loads(json.dumps(protocols)) # Deep copy
-        em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
-        movie_info = em_handler.set_importmovie_info(protocols, self._get_processing_source_path())
+        workflow = self.exp.processing.workflow
+        workflow: dict = json.loads(json.dumps(workflow)) # Deep copy
 
+        # Get exposure values and set them to the workflow
+        em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
+        movie_info = em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
+        path_to_movies_relative : pathlib.Path = self.exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
+        processing_source_path = self._get_processing_source_path()
+        workflow["exposure"] = {
+            "file_engine_watch_path_abs" : str(processing_source_path / path_to_movies_relative),
+            "file_engine_filter" : f"*{movie_info[0].suffix}",
+            "gainref_path" : str(processing_source_path / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
+        }
 
         # Invoke the cryosparc engine
-        stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(protocols))
+        stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout
-        self.exp.processing.state = experiment.ProcessingState.READY
+        self.exp.processing.state = experiment.ProcessingState.READY        
     
     def run_project(self):
         project_id, session_id = self.exp.processing.pid.split("/")
