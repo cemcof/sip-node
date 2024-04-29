@@ -316,17 +316,11 @@ class ExperimentWrapper:
                     return default
             return tmp_val
                 
-        def pick_from_protocol(key: str):
+        def pick_from_processing(key: str):
             key = key.split(":")[-1]
-            key = key.split("/")
-            prot_name, prot_property = key[0], key[1]
-            prot = self.processing.find_protocol_by_name(prot_name)
-            if prot:
-                prot_meta = job_config.find_protocol_property(prot_name, prot_property)
-                default = prot_meta["Default"]
-                unit = prot_meta["Unit"] if "Unit" in prot_name else None
-                return pick(prot_property, prot, default), unit
-            return None, None
+            val = next(common.search_for_key(key), None)
+            # TODO - look for the Unit in workflow - problematic 
+            return val, None
 
         # Basic metadata (experiment)
         for k,v in filter(lambda x: x[1].startswith("exp:"), job_config.metadata["Model"].items()):
@@ -335,8 +329,8 @@ class ExperimentWrapper:
             yield k, val, None
 
         # Metadata form workflows, this is more dificult
-        for k,v in filter(lambda x: x[1].startswith("protocol:"), job_config.metadata["Model"].items()):
-            val, unit = pick_from_protocol(v)
+        for k,v in filter(lambda x: x[1].startswith("processing:"), job_config.metadata["Model"].items()):
+            val, unit = pick_from_processing(v)
             # print(f"Yielding: {k}, {val}, {unit}")
             yield k, val, unit
 

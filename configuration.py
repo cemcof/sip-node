@@ -20,15 +20,6 @@ class JobConfigWrapper:
     def __init__(self, data) -> None:
         self._data = data
 
-    def find_protocol_property(self, protocol_name, property_name):
-        for k,v in self._data["Workflows"]:
-            proto = next(filter(lambda p: "object.className" in p and p["object.className"] == protocol_name, v), None)
-            if proto and property_name in proto:
-                if (not isinstance(proto[property_name], dict)):
-                    return {"Default": proto[property_name]}
-                return proto[property_name]
-        return None
-
     @property
     def metadata(self):
         return self._data["Metadata"]
@@ -122,9 +113,6 @@ class LimsConfigWrapper():
     def get_module_config(self, module_name):
         return next(filter(lambda x: x["target"] == module_name, self.node["Modules"]), None)
     
-    def find_protocol_property(self, instrument, technique, protocol_name, property_name):
-        return self.get_experiment_config(instrument, technique).find_protocol_property(protocol_name, property_name)
-
     def find_module_config_any_node(self, module_name):
         nodes = self.find_module_config_nodes(module_name)
         return next(nodes, (None, None))

@@ -185,3 +185,17 @@ def dict_to_json_patch(input_dict, path=""):
             operations.append(operation)
 
     return operations
+
+def search_for_key(data, key):
+    """ Recursively search key in given data object, which can be dict, list, or object  """
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k == key:
+                yield v
+            else:
+                yield from search_for_key(v, key)
+    elif isinstance(data, list):
+        for item in data:
+            yield from search_for_key(item, key)
+    else:
+        return
