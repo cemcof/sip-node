@@ -87,7 +87,7 @@ class IrodsCollectionWrapper:
             return data if not as_text else str(data, "utf-8")
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
-        return self.irods_session.data_objects.get(str(self.collection_path / path_relative_src), str(path_dst))
+        return self.irods_session.data_objects.get(str(self.collection_path / path_relative_src), str(path_dst), forceFlag=True)
 
     def write_file(self, path_relative: pathlib.Path, content):
         with self.open_dataobject(path_relative, "w") as f:
