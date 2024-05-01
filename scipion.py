@@ -8,21 +8,12 @@ from common import StateObj, exec_state, multiglob
 from logger_db_api import wrap_logger_origin
 
 
-class ScipionWrapper(StateObj):
+class ScipionWrapper:
     """ Wrapper for scipion project 
         Supports managing the scipion project, configuration, locations, invoking scipion scripts and more,
         all in the context of LIMS needs
     """
 
-    # States of the scipion project
-    STATE_WAITING_FOR_FIRST_DATA = "state_waiting_for_first_data"
-    STATE_PROJECT_NOT_EXISTS = "state_project_not_exists" 
-    STATE_PROJECT_READY = "state_project_ready"
-    STATE_PROJECT_RUNNING = "state_project_running"
-    STATE_PROJECT_FATAL = "state_project_fatal"
-    STATE_PROJECT_FINISHED = "state_project_finished"
-
-    _MASTER_PID_FILE = "master_schedule.pid"
     _DEFAULT_SCIPION_DIRECTORY = pathlib.Path("~/ScipionUserData").expanduser()
     _SCIPION_HOME_CONFIG_DIR = pathlib.Path("~/.config/scipion").expanduser()
 
@@ -192,9 +183,7 @@ class ScipionWrapper(StateObj):
         self.logger.info(f"Executing: {submit_cmd}")
         result = subprocess.run(submit_cmd, shell=True, check=True)
         self.logger.info(f"Submitted queue job for the project schedule: {self.project_name}, exited with {result}")
-        # Write down dummy pid 
-        (self.project_directory / self._MASTER_PID_FILE).write_text(str(9999)) 
-        return None
+        return 9999 # TODO - pid
 
     def _schedule_command(self):
         cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.schedule "{self.project_name}"')
@@ -207,7 +196,6 @@ class ScipionWrapper(StateObj):
         # We need to fire and forget the process using Popen, because otherwise it will block the thread
         proc = subprocess.Popen(cmd, shell=True, env=env)
         self.logger.info(f"Running scipion scheduler on the project, pid is {proc.pid}")
-        (self.project_directory / self._MASTER_PID_FILE).write_text(str(proc.pid))
         return proc.pid
 
     @property
@@ -241,71 +229,10 @@ class ScipionWrapper(StateObj):
         return FileWatcher(index_file)
     
 
-    def get_state(self):
-        # Has the process been scheduled / run?
-        master_pid_file = self.project_directory / self._MASTER_PID_FILE
-        if master_pid_file.exists():
-            return self.STATE_PROJECT_RUNNING
-        
-        # Not running, does the project at least exist? 
-        if not self.project_exists():
-            return self.STATE_PROJECT_NOT_EXISTS
-        
-        # Project exists
-        return self.STATE_PROJECT_READY
-
-        
-        
-
-        # We are not ready to create the project yet
-        # return self.STATE_WAITING_FOR_FIRST_DATA
+    
     
 
-        
-        
-        # Is it still running?
-
-        # This is problematic because the process is not there
-
-        # try:
-        #     process = psutil.Process(int(master_pid_file.read_text()))
-        #     if process.is_running():
-        #         return self.STATE_PROJECT_RUNNING
-        # except psutil.NoSuchProcess:
-        #     return self.STATE_PROJECT_FINISHED
-        
-        # So lets just assume for now that project is running if the pid file exists
-        # return self.STATE_PROJECT_RUNNING
-        
-
-        # #self.project_directory.ls
-        # connection = sqlite3.connect(self.project_directory / "project.sqlite")
-        # cursor = connection.cursor()
-        # # Query the sqlite_master table to retrieve the schema
-        # schema_query = f"PRAGMA table_info(Objects)"
-        # cursor.execute(schema_query)
-        # schema_info = cursor.fetchall()
-        # # Print the schema information
-        # print(f"Schema for table 'Objects':")
-        # for column in schema_info:
-        #     col_name = column[1]
-        #     col_type = column[2]
-        #     print(f"Column name: {col_name}, Column type: {col_type}")
-
-        # # TODO 
-        # # Examine scipion project directory and databases to find out whether required scripts are running, project is finished etc
-        # select_query = "SELECT * FROM Objects"
-        # cursor.execute(select_query)
-        # all_data = cursor.fetchall()
-        # for row in all_data:
-        #     print(row)
-        # cursor.close()
-        # connection.close()
-
-    # State operations
-    
-
-class ScipionExpWrapper(ScipionWrapper):
+class ScipionExpWrapper(ScipionWrapper, StateObj):
     """
     Extends ScipionWrapper with a context of LIMS experiment and it's storage
     """
@@ -320,6 +247,9 @@ class ScipionExpWrapper(ScipionWrapper):
             return pathlib.Path(self.scipion_config["SourceDataRoot"]) / self.exp.secondary_id
         else:
             return self.storage_engine.resolve_target_location()
+        
+    def get_state(self):
+        return self.exp.processing.state
 
     def prepare_protocol_data(self, protocols: list):
         """ Execute several adjustments to the protocol data so it is compatible with the scipion 
@@ -396,12 +326,13 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
             workflow = sciw.prepare_protocol_data(exp.processing.workflow)
             if workflow: # If we get workflow, project is ready to be created and scheduled
                 sciw.ensure_project(workflow, purge_existing=True)
-                # pass
+                exp.processing.state = experiment.ProcessingState.READY
 
         def state_project_ready():
             pid = sciw.schedule()
             if pid:
                 exp.processing.pid = str(pid)
+                exp.processing.state = experiment.ProcessingState.RUNNING
 
         def state_project_running():
             # Sniff for new logs and send them to the LIMS
@@ -422,22 +353,18 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
             # But dont use experiment logger
             exp_engine.sniff_and_transfer(sciw.project_directory, exp_engine.e_config.data_rules.with_tags("processed"), keep_source_files=True, logger=logging.getLogger("ProcessingTransfer"))
 
-        def state_project_fatal():
-            sciw.logger.error("Scipion project fatal error")
-
         def state_project_finished():
             # sciw.logger.info("Scipion project finished")
             # state_project_running()
             pass
             
-
         exec_state(sciw,
             {
-                ScipionWrapper.STATE_PROJECT_NOT_EXISTS: state_project_not_exists,
-                ScipionWrapper.STATE_PROJECT_READY: state_project_ready,
-                ScipionWrapper.STATE_PROJECT_RUNNING: state_project_running,
-                ScipionWrapper.STATE_PROJECT_FATAL: state_project_fatal,
-                ScipionWrapper.STATE_PROJECT_FINISHED: state_project_finished
+                experiment.ProcessingState.UNINITIALIZED: state_project_not_exists,
+                experiment.ProcessingState.READY: state_project_ready,
+                experiment.ProcessingState.RUNNING: state_project_running,
+                experiment.ProcessingState.COMPLETED: state_project_finished,
+                experiment.ProcessingState.DISABLED: lambda: None,
             }
         )
         

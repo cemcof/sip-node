@@ -26,9 +26,11 @@ class JobState(enum.Enum):
     FINISHED = "Finished"
 
 class ProcessingState(enum.Enum):
+    UNINITIALIZED = "Uninitialized"
     READY = "Ready"
     RUNNING = "Running"
     COMPLETED = "Completed"
+    DISABLED = "Disabled"
 
 class StorageState(enum.Enum):
     NONE = "None"
