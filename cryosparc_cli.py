@@ -50,7 +50,7 @@ class CryosparcEngine:
 
     def create_project(self, project_path: pathlib.Path, workflow):
         project_dir, project_name = project_path.parent, str(project_path.name)
-        project_uid = self.cli.create_empty_project(owner_user_id=self.user_id, project_container_dir=project_dir, title=project_name)
+        project_uid = self.cli.create_empty_project(owner_user_id=self.user_id, project_container_dir=str(project_dir), title=project_name)
         # workflow = processing_tools.WorkflowWrapper(workflow)
 
         # Create a new Live session
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     
     setup_parser = subparsers.add_parser('create')
     setup_parser.set_defaults(func="create_project")
-    setup_parser.add_argument("-p", "--project-path", dest="session_id", type=pathlib.Path, help="Path to the project, last part of this path will be used as a project name/title", required=True)
+    setup_parser.add_argument("-p", "--project-path", dest="project_path", type=pathlib.Path, help="Path to the project, last part of this path will be used as a project name/title", required=True)
     setup_parser.add_argument("-c", "--cluster", dest="cluster", help="Computational cluster", required=True)
     setup_parser.add_argument("-w", "--workflow-file", dest="workflow", help="Path to the file with JSON workflow for the project, - for stdin", required=True, type=argparse.FileType(encoding='utf-8'))
 
@@ -133,6 +133,7 @@ if __name__ == "__main__":
     # Should we prepare environment?
     if parsed_main.get("cm"):
         env = get_cryosparc_env(parsed_main["cm"])
+        del parsed_main["cm"]
         for key, value in env.items():
             os.environ[key] = value
             # Need to set python path explicityl
@@ -147,4 +148,7 @@ if __name__ == "__main__":
 
     # Use cryosparc engine to invoke the subcommand
     cryosparc = CryosparcEngine(parsed_main["email"], sys.stdout, compute_configuration)
-    getattr(cryosparc, parsed_main["func"])(**vars(parsed_main))
+    del parsed_main["email"]
+    func = getattr(cryosparc, parsed_main["func"])
+    del parsed_main["func"]
+    func(**parsed_main)

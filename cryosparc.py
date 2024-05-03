@@ -16,6 +16,7 @@ class CryosparcWrapper(StateObj):
         self.exp = exp_engine.exp
         self.config = config
         self.python_exec = config.get("PythonExec", "python3")
+        self.cryosparc_cli_path = config.get("CryosparcCliPath", "cryosparc_cli.py")
         self.cm_path = config["CmPath"]
         self.projects_dir = config["ProjectsDir"]
         self.project_name = exp_engine.exp.secondary_id
@@ -24,7 +25,7 @@ class CryosparcWrapper(StateObj):
         self.cluster = config["ComputationalCluster"]
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
-        args = [self.python_exec, __file__, "-e", self.email, "--cm", self.cm_path, subprogram]
+        args = [self.python_exec, self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
         for key, value in args_extra.items():
             args.append(key)
             args.append(value)
@@ -70,6 +71,15 @@ class CryosparcWrapper(StateObj):
             "file_engine_filter" : f"*{movie_info[0].suffix}",
             "gainref_path" : str(processing_source_path / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
         }
+
+        # Use metadata to compute dose per stack (frame dose times number of frames)
+        try:
+            meta = self.exp_engine.read_metadata()
+            dose = meta["DATA_fmDose"] * meta["DATA_numFrames"]
+            workflow["mscope_params"]["total_dose_e_per_A2"] = dose
+            self.exp_engine.logger.info(f"Computed dose per stack: {dose}")
+        except Exception as e:
+            self.exp_engine.logger.error(f"Error during dose computation: {e}")
 
         # Invoke the cryosparc engine
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
