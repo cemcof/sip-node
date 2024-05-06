@@ -147,7 +147,13 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             irods_session=iRODSSession(**self.config["Irods"]["Connection"]), 
             collection_path=pathlib.Path(self.config["Irods"]["base_path"]) / self.exp.secondary_id, 
             logger=self.logger)
+        
+        self.mount_point = pathlib.Path(self.config["Irods"]["mount_point"]) if "mount_point" in self.config["Irods"] else None
 
+    def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
+        if self.mount_point:
+            return self.mount_point / self.exp.secondary_id / (src_relative or "")
+        return None
     
     def restore_metadata(self, metadata={}):
         meta = super().restore_metadata(metadata)

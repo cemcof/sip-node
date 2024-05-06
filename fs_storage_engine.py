@@ -63,7 +63,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
         target_policy = getattr(self, self.config["TargetPolicy"])
         target = target_policy()
-        return target if not src_relative else target / src_relative
+        return target / (src_relative or "")
     
     def file_exists(self, path_relative: pathlib.Path):
         return self.resolve_target_location(path_relative).exists()

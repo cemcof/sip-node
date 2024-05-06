@@ -18,9 +18,12 @@ class CryosparcWrapper(StateObj):
         self.python_exec = config.get("PythonExec", "python3")
         self.cryosparc_cli_path = config.get("CryosparcCliPath", "cryosparc_cli.py")
         self.cm_path = config["CmPath"]
-        self.projects_dir = config["ProjectsDir"]
-        self.project_name = exp_engine.exp.secondary_id
-        self.project_path = pathlib.Path(self.projects_dir) / self.project_name
+
+        project_location = self.exp_engine.resolve_target_location()
+        self.project_path = project_location or pathlib.Path( config["ProjectsDir"]) / exp_engine.exp.secondary_id
+        self.projects_dir = self.project_path.parent
+        self.project_name = self.project_path.name
+
         self.email = config["Email"]
         self.cluster = config["ComputationalCluster"]
 
@@ -42,6 +45,7 @@ class CryosparcWrapper(StateObj):
         return pc.stdout, pc.stderr
     
     def _get_processing_source_path(self):
+        self.exp_engine.resolve_source_dir
         if "SourceDataRoot" in self.config and self.config["SourceDataRoot"]:
             return pathlib.Path(self.scipion_config["SourceDataRoot"]) / self.exp.secondary_id
         else:
