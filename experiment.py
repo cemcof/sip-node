@@ -410,6 +410,12 @@ class ExperimentStorageEngine:
         # No data rule match? Leave it as is
         return source_file_relative
     
+    def get_tag_target_dir(self, *tags):
+        dr = self.e_config.data_rules.with_tags(tags)
+        if not dr: 
+            raise ValueError(f"No target configured for tags: {tags}")
+        return dr[0].target
+    
     def file_exists(self, path_relative: pathlib.Path):
         raise NotImplementedError()
     
@@ -516,6 +522,8 @@ class ExperimentStorageEngine:
     @property
     def metadata_target(self):
         return pathlib.Path(self.e_config.metadata["Target"])
+    
+
 
 
 class ExperimentModuleBase(configuration.LimsNodeModule):

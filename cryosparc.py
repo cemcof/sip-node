@@ -19,9 +19,9 @@ class CryosparcWrapper(StateObj):
         self.cryosparc_cli_path = config.get("CryosparcCliPath", "cryosparc_cli.py")
         self.cm_path = config["CmPath"]
 
-        project_location = self.exp_engine.resolve_target_location()
-        self.project_path = project_location or pathlib.Path( config["ProjectsDir"]) / exp_engine.exp.secondary_id
-        self.projects_dir = self.project_path.parent
+        self.projects_dir = self.exp_engine.resolve_target_location() 
+        self.projects_dir = self.projects_dir / exp_engine.get_tag_target_dir("processed") if self.projects_dir else config["ProjectsDir"]
+        self.project_path = self.projects_dir / f"cryosparc_{exp_engine.exp.secondary_id}"
         self.project_name = self.project_path.name
 
         self.email = config["Email"]
@@ -45,11 +45,7 @@ class CryosparcWrapper(StateObj):
         return pc.stdout, pc.stderr
     
     def _get_processing_source_path(self):
-        self.exp_engine.resolve_source_dir
-        if "SourceDataRoot" in self.config and self.config["SourceDataRoot"]:
-            return pathlib.Path(self.scipion_config["SourceDataRoot"]) / self.exp.secondary_id
-        else:
-            return self.exp_engine.resolve_target_location()
+        return self.exp_engine.resolve_target_location()
         
     def create_project(self):
         args = {
@@ -68,7 +64,7 @@ class CryosparcWrapper(StateObj):
         movie_info = em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
-        path_to_movies_relative : pathlib.Path = self.exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
+        path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir("movie", "raw")
         processing_source_path = self._get_processing_source_path()
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(processing_source_path / path_to_movies_relative),
@@ -88,7 +84,7 @@ class CryosparcWrapper(StateObj):
         # Invoke the cryosparc engine
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
-        self.exp.processing.pid = stdout
+        self.exp.processing.pid = stdout.strip()
         self.exp.processing.state = experiment.ProcessingState.READY        
         return True
     
@@ -116,12 +112,15 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         cconf = self.module_config["CyrosparcConfig"]
         cw = CryosparcWrapper(exp_engine, cconf)
-
+        def running():
+            path_to_movies_relative : pathlib.Path = exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
+            processing_source_path = cw._get_processing_source_path()
+            print("srcp", path_to_movies_relative, processing_source_path)
         exec_state(cw,
             {
                 experiment.ProcessingState.UNINITIALIZED: cw.create_project,
                 experiment.ProcessingState.READY: cw.run_project,
-                experiment.ProcessingState.RUNNING: lambda: None, # TODO - feedback?
+                experiment.ProcessingState.RUNNING: running, # TODO - feedback?
                 experiment.ProcessingState.COMPLETED: lambda: None,
                 experiment.ProcessingState.DISABLED: lambda: None,
             }
