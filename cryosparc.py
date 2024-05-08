@@ -82,6 +82,7 @@ class CryosparcWrapper(StateObj):
             self.exp_engine.logger.error(f"Error during dose computation: {e}")
 
         # Invoke the cryosparc engine
+        self.exp_engine.logger.info(f"Creating cryosparc project with workflow:", json.dumps(workflow, indent=2))
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout.strip()

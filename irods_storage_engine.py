@@ -149,6 +149,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             logger=self.logger)
         
         self.mount_point = pathlib.Path(self.config["Irods"]["mount_point"]) if "mount_point" in self.config["Irods"] else None
+        # Once refactoring, create FsStorageService and use it when mount point is available
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
         if self.mount_point:
