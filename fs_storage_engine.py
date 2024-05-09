@@ -2,7 +2,6 @@ import logging
 import time
 import configuration
 import experiment
-import yaml
 from experiment import ExperimentWrapper
 from common import multiglob
 import data_tools, common
@@ -10,25 +9,24 @@ import pathlib
 import shutil
 
 class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
-    def by_user_type_and_year_target_policy(self):
-        base_path = pathlib.Path(self.config["BasePath"])
-        data_year = self.exp.dt_created.strftime("%y")
-        target_path = base_path / self.exp.user_type / f"DATA_{data_year}" / self.exp.secondary_id
+    def __init__(self, experiment: ExperimentWrapper, logger: logging.Logger, data_rules: configuration.DataRulesWrapper, metadata_model: dict,
+                 base_path, 
+                 server_base_path,
+                
+                 metadata_target="experiment.yml",
+                 operator_links_folder=None) -> None:
+        super().__init__(experiment, logger, data_rules, metadata_model, metadata_target)
+        self.base_path = pathlib.Path(base_path)
+        self.server_base_path = pathlib.Path(server_base_path)
+        self.operator_links_folder = pathlib.Path(operator_links_folder) if operator_links_folder else None
 
-        return target_path
-    
-    def standard_links_by_operator_target_policy(self):
-        base_path = pathlib.Path(self.config["BasePath"])
-        target_path = base_path / self.exp.user_type / f"OPERATORS" / self.exp.data_model["Operator"]["Fullname"].replace(" ", "_") / self.exp.secondary_id
-        return target_path
-    
     def _link_operator_directory(self):
         """If configured, create a link to the operator directory"""
-        if not self.config["LinksByOperatorTargetPolicy"]:
-            return
+        if not self.operator_links_folder:
+            return None
 
         # Create link
-        target_path: pathlib.Path = getattr(self, self.config["LinksByOperatorTargetPolicy"])()
+        target_path = self.operator_links_folder / f"OPERATORS" / self.exp.data_model["Operator"]["Fullname"].replace(" ", "_") / self.exp.secondary_id
 
         # Ensure that the target directory exists
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,7 +43,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self._link_operator_directory()
 
     def get_access_info(self):
-        target_path = pathlib.Path(self.config["ServerBasePath"]) / self.resolve_target_location().relative_to(self.config["BasePath"])
+        target_path = self.server_base_path / self.resolve_target_location().relative_to(self.base_path)
         return {
             "Target": self.config["Server"],
             "Path": str(target_path),
@@ -61,9 +59,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             return False
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
-        target_policy = getattr(self, self.config["TargetPolicy"])
-        target = target_policy()
-        return target / (src_relative or "")
+        target_path = self.base_path / self.get_exp_subpath()
+        return target_path / (src_relative or "")
     
     def file_exists(self, path_relative: pathlib.Path):
         return self.resolve_target_location(path_relative).exists()
@@ -88,8 +85,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         shutil.copyfile(src_file, target)
         took_sec = time.time() - timestart
         file_size = target.stat().st_size
-        self.logger.info(f"Transfered file {src_file.name} to the storage. {common.sizeof_fmt(file_size)}, {took_sec:.3f} sec")
-        return True
+        # self.logger.info(f"Transfered file {src_file.name} to the storage. {common.sizeof_fmt(file_size)}, {took_sec:.3f} sec")
+        return took_sec, file_size
     
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         target = self.resolve_target_location(path_relative_src)
@@ -100,9 +97,22 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         target = self.resolve_target_location()
         shutil.rmtree(target)
 
-        
     def glob(self, patterns):
         target = self.resolve_target_location()
         for f in multiglob(target, patterns):
             yield f.relative_to(target)
     
+
+def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper):
+    conf: dict = module_config.get(exp.storage.engine)
+    if not conf:
+        return None
+    
+    return FsExperimentStorageEngine(
+        exp, logger, e_config.data_rules, e_config.metadata["model"],
+
+        base_path=conf["base_path"], 
+        server_base_path=conf.get("server_base_path"),
+        metadata_target=e_config.metadata["target"],
+        operator_links_folder=conf.get("operator_links_folder"),
+    )

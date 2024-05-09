@@ -306,7 +306,7 @@ class ExperimentWrapper:
                 return True
         return False
     
-    def extract_metadata(self, job_config):
+    def extract_metadata(self, metadata_model):
 
         def pick(key: str, from_obj, default=None):
             key = key.split(":")[-1] # Remove prefix if any
@@ -325,13 +325,13 @@ class ExperimentWrapper:
             return val, None
 
         # Basic metadata (experiment)
-        for k,v in filter(lambda x: x[1].startswith("exp:"), job_config.metadata["Model"].items()):
+        for k,v in filter(lambda x: x[1].startswith("exp:"), metadata_model.items()):
             val = pick(v, self._data)
             # print(f"Yielding: {k}, {val}, None")
             yield k, val, None
 
         # Metadata form workflows, this is more dificult
-        for k,v in filter(lambda x: x[1].startswith("processing:"), job_config.metadata["Model"].items()):
+        for k,v in filter(lambda x: x[1].startswith("processing:"), metadata_model.items()):
             val, unit = pick_from_processing(v)
             # print(f"Yielding: {k}, {val}, {unit}")
             yield k, val, unit
@@ -353,11 +353,19 @@ class ExperimentsApi:
         return ExperimentApi(id, self._http_session)
     
 class ExperimentStorageEngine:
-    def __init__(self, experiment: ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, config: configuration.LimsModuleConfigWrapper) -> None:
+    def __init__(self, 
+                 experiment: ExperimentWrapper, 
+                 logger: logging.Logger,
+                 data_rules: DataRulesWrapper,
+                 metadata_model: dict,
+
+                 metadata_target="experiment.yml"
+                 ) -> None:
         self.exp = experiment
         self.logger = logger
-        self.config = config
-        self.e_config = e_config
+        self.metadata_target = pathlib.Path(metadata_target)
+        self.data_rules = data_rules
+        self.metadata_model = metadata_model
 
     def is_accessible(self):
         """ Check if the storage is accessible from current node with current configuration """
@@ -371,17 +379,21 @@ class ExperimentStorageEngine:
         """ Get data access information for the storage """
         raise NotImplementedError()
     
-    def resolve_source_dir(self):
-        src_dir_original_path = self.exp.storage.source_directory
-        src_dir_path = self.config.lims_config.translate_path(src_dir_original_path, self.exp.secondary_id) or src_dir_original_path
-        return src_dir_path
-
     def resolve_target_location(self, src_relative: pathlib.Path=None) -> pathlib.Path:
-        return None
+        raise NotImplementedError()
         
     def metadata_exists(self):
         return self.file_exists(self.metadata_target)
     
+    def get_exp_subpath(self): 
+        data_year = self.exp.dt_created.strftime("%y")
+        project_id = self.exp.data_model["ProjectId"]
+        if project_id:
+            project_folder = common.to_safe_filename(project_id + "_" + self.exp.data_model["Project"]["Acronym"])
+            return f"DATA_{data_year}" / project_folder / self.exp.secondary_id
+        else: 
+            return f"DATA_{data_year}" / self.exp.secondary_id
+
     def read_metadata(self):
         if not self.metadata_exists():
             return {}
@@ -393,7 +405,7 @@ class ExperimentStorageEngine:
 
     def determine_relative_target(self, source_file_relative: pathlib.Path, tag=None):
 
-        for rule in self.e_config.data_rules.with_tags(tag):
+        for rule in self.data_rules.with_tags(tag):
         
             # Does the path match?
             pattens = rule["Patterns"]
@@ -411,7 +423,7 @@ class ExperimentStorageEngine:
         return source_file_relative
     
     def get_tag_target_dir(self, *tags):
-        dr = self.e_config.data_rules.with_tags(tags)
+        dr = self.data_rules.with_tags(tags)
         if not dr: 
             raise ValueError(f"No target configured for tags: {tags}")
         return dr[0].target
@@ -441,23 +453,22 @@ class ExperimentStorageEngine:
         """ Purge all data from the storage """
         raise NotImplementedError()
     
-    def sniff_and_transfer_raw(self):
-        source = self.resolve_source_dir()
-        raw_rules = self.e_config.data_rules.with_tags("raw")
+    def sniff_and_transfer_raw(self, source_path):
+        source_path = pathlib.Path(source_path)
+        raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
-        
         raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRuleWrapper(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
-        self.sniff_and_transfer(source, raw_rules, name="raw", keep_source_files=self.exp.storage.keep_source_files)
+        self.sniff_and_transfer(source_path, raw_rules, name="raw", keep_source_files=self.exp.storage.keep_source_files)
 
-    def sniff_and_transfer(self, source_dir: pathlib.Path, rules: DataRulesWrapper, name: str="sniffer", keep_source_files=True, logger=None):
+    def sniff_and_transfer(self, source_dir: pathlib.Path, rules: DataRulesWrapper, name: str="sniffer", keep_source_files=True, log_each_transfer=True):
         """ Sniff files in source directory and transfer them to storage """
-        if logger: # Swap loggers for this operation
-            self.logger, logger = logger, self.logger
-
         def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
             try:
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source_dir))
-                self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                if log_each_transfer:
+                    self.logger.info(f"TRANSFERED [{data_rule.tags}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec
+                                    \n {source_path.name}")
                 if not keep_source_files:
                     source_path.unlink()
             except:
@@ -468,25 +479,20 @@ class ExperimentStorageEngine:
         sniffer = DataRulesSniffer(source_dir, rules, sniff_consumer, tmp_file)
         sniffer.sniff_and_consume()
 
-        if logger: # Restore loggers if swapped
-            self.logger, logger = logger, self.logger
-
-    def sniff_and_process_metafile(self):
-        source = self.resolve_source_dir()
-        meta_rules = self.e_config.data_rules.with_tags("metadata")
+    def sniff_and_process_metafile(self, source_path):
+        source_path = pathlib.Path(source_path)
+        meta_rules = self.data_rules.with_tags("metadata")
         def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
             self.restore_metadata(yaml.full_load(source_path.read_text()))
             source_path.unlink()
 
-        sniffer = DataRulesSniffer(source, meta_rules, sniff_consumer, None, min_nochange_sec=0)
+        sniffer = DataRulesSniffer(source_path, meta_rules, sniff_consumer, None, min_nochange_sec=0)
         sniffer.sniff_and_consume()
 
     def extract_metadata(self):
-        metad = self.exp.extract_metadata(self.e_config)
+        metad = self.exp.extract_metadata(self.metadata_model)
         metad = { k: v for k,v,_ in metad }
         return metad
-            
-
 
     def restore_metadata(self, metadata={}):
         """ Restore metadata from multiple sources (by given precedence, later overrides earlier):
@@ -515,16 +521,10 @@ class ExperimentStorageEngine:
 
         # Write metadata
         metad_yaml = yaml.dump(metad)
+        # TODO - submit metadata to sip experiment
         self.write_file(self.metadata_target, metad_yaml)
 
         return metad
-
-    @property
-    def metadata_target(self):
-        return pathlib.Path(self.e_config.metadata["Target"])
-    
-
-
 
 class ExperimentModuleBase(configuration.LimsNodeModule):
     def __init__(self, name, logger, lims_logger, config: configuration.LimsModuleConfigWrapper, api_session, exp_storage_engine_factory):

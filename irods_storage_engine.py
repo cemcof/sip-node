@@ -12,6 +12,7 @@ from irods.ticket import Ticket
 from irods.collection import iRODSCollection
 import irods.message
 import fnmatch
+import fs_storage_engine
 
 # Filter out aggressive debug logs from irods that spit out tons of binary data
 logging.getLogger("irods.connection").setLevel(logging.INFO)
@@ -37,7 +38,6 @@ class IrodsCollectionWrapper:
 
         if not existed:
             self.irods_session.collections.create(str(col))
-            self.logger.info(f"Created new iRODS collection: {str(col)}")
 
         return existed
     
@@ -57,13 +57,14 @@ class IrodsCollectionWrapper:
         self.ensure_exists(target.parent)
 
         # Start and measure file upload    
-        size_fmt = common.sizeof_fmt(source.stat().st_size)
-        t_start = datetime.datetime.utcnow()
+        size = source.stat().st_size
+        # size_fmt = common.sizeof_fmt(source.stat().st_size)
+        t_start = datetime.datetime.now(datetime.timezone.utc)
         self.irods_session.data_objects.put(str(source), str(target))
-        t_done = datetime.datetime.utcnow()
+        t_done = datetime.datetime.now(datetime.timezone.utc)
         time_delta_secs = (t_done - t_start).total_seconds()
-        self.logger.info(f"Transfered to iRODS: {str(source_relative or source_base.name)} -> {target_relative}, {size_fmt}, {time_delta_secs:.3f}s")
-        return True
+        # self.logger.info(f"Transfered to iRODS: {str(source_relative or source_base.name)} -> {target_relative}, {size_fmt}, {time_delta_secs:.3f}s")
+        return time_delta_secs, size
     
     def exists(self,relative_path: pathlib.Path):
         return self.irods_session.data_objects.exists(str(self.collection_path / relative_path))
@@ -140,20 +141,38 @@ class IrodsCollectionWrapper:
 
 class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
 
-    def __init__(self, experiment: ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, config: configuration.LimsModuleConfigWrapper) -> None:
-        super().__init__(experiment, e_config, logger, config)
+    def __init__(self, experiment: ExperimentWrapper, 
+                 logger: logging.Logger,
+                 data_rules: configuration.DataRulesWrapper,
+                 metadata_model: dict,
+                 connection: dict,
+                 collection_base,
+                 
+                 mount_point=None,
+                 metadata_target="experiment.yml") -> None:
+        super().__init__(experiment, logger, data_rules, metadata_model, metadata_target)
+        self.connection_config = connection
+        self.collection_base = pathlib.Path(collection_base)
+        self.mount_point = pathlib.Path(mount_point) if mount_point else None
 
         self.irods_collection = IrodsCollectionWrapper(
-            irods_session=iRODSSession(**self.config["Irods"]["Connection"]), 
-            collection_path=pathlib.Path(self.config["Irods"]["base_path"]) / self.exp.secondary_id, 
+            irods_session=iRODSSession(**self.connection_config), 
+            collection_path=self.collection_base / self.exp.secondary_id, # TODO - internal path to exp structure?
             logger=self.logger)
         
-        self.mount_point = pathlib.Path(self.config["Irods"]["mount_point"]) if "mount_point" in self.config["Irods"] else None
-        # Once refactoring, create FsStorageService and use it when mount point is available
+        self.fs_underlying_storage = None
+        if self.mount_point:
+            self.fs_underlying_storage = fs_storage_engine.FsExperimentStorageEngine(
+                experiment=self.exp, 
+                logger=self.logger, 
+                data_rules=self.data_rules, 
+                base_path=self.mount_point, 
+                server_base_path=self.mount_point, 
+                metadata_target=self.metadata_target)
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
         if self.mount_point:
-            return self.mount_point / self.exp.secondary_id / (src_relative or "")
+            return self.mount_point / self.get_exp_subpath() / self.exp.secondary_id / (src_relative or "")
         return None
     
     def restore_metadata(self, metadata={}):
@@ -162,6 +181,8 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             self.irods_collection.store_irods_metadata(target_file=self.metadata_target, metadata=meta)
 
     def is_accessible(self):
+        if self.fs_underlying_storage:
+            return self.fs_underlying_storage.is_accessible()
         try:
             self.irods_collection.irods_session.pam_pw_negotiated
             return True
@@ -179,26 +200,55 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self.irods_collection.ensure_exists()
 
     def read_file(self, path_relative: pathlib.Path, as_text=True):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.read_file(path_relative, as_text)
         return self.irods_collection.read_file(path_relative, as_text)
     
     def write_file(self, path_relative: pathlib.Path, content):
-        self.irods_collection.ensure_exists(self.irods_collection.collection_path / path_relative.parent)
-        self.irods_collection.write_file(path_relative, content)
+        if (self.fs_underlying_storage):
+            self.fs_underlying_storage.write_file(path_relative, content)
+        else:
+            self.irods_collection.ensure_exists(self.irods_collection.collection_path / path_relative.parent)
+            self.irods_collection.write_file(path_relative, content)
     
     def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, skip_if_exists=True):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.put_file(path_relative, src_file, skip_if_exists)
         return self.irods_collection.ensure_file(src_file, path_relative, replace=not skip_if_exists)
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.get_file(path_relative_src, path_dst)
         return self.irods_collection.get_file(path_relative_src, path_dst)
 
     def file_exists(self, path_relative: pathlib.Path):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.file_exists(path_relative)
         return self.irods_collection.exists(path_relative)
     
     def purge(self):
         self.irods_collection.drop_collection()
     
     def glob(self, patterns):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.glob(patterns)
         return self.irods_collection.glob(patterns)
+
+
+def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper):
+
+    conf: dict = module_config.get(exp.storage.engine)
+    if not conf:
+        return None
+    
+    return IrodsExperimentStorageEngine(
+        exp, logger, e_config.data_rules, e_config.metadata["model"],
+
+        collection_base=conf["base_path"], 
+        metadata_target=e_config.metadata["target"],
+        connection=conf["connection"],
+        mount_point=conf.get("mount_point", None) 
+    )
 
 
 # If we are running as main script...

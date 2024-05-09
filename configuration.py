@@ -149,19 +149,25 @@ class LimsModuleConfigWrapper():
         self.module_name = module_name
         self.node_name = node_name
 
-    def __getitem__(self, item):
+    def get(self, item_path):
         if self.module_name:
             module_config = self.lims_config.get_module_config(self.module_name)
-            if item in module_config:
-                return module_config[item]
+            val = common.get_dict_val_by_path(module_config, item_path)
+            if val is not None:
+                return val
             else:
                 # Try node config 
                 node_config = self.lims_config.get_node_config(self.node_name)
-                if item in node_config:
-                    return node_config[item]
+                val = common.get_dict_val_by_path(node_config, item_path)
+                if val is not None:
+                    return val
 
         # Try global config
-        return self.lims_config[item]
+        return common.get_dict_val_by_path(self.lims_config.config, item_path)
+
+    def __getitem__(self, item):
+        return self.get(item)
+        
     
 
 class LimsNodeModule:

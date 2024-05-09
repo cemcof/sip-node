@@ -12,6 +12,14 @@ import experiment
 
 # Main task of main is to obtain configuration for this node
 
+# // DONE Prepsat storage engine parametry 
+# // DONE Pouzit v irods engine fs engine a doimplementovat
+# // DONE Poresit target location resolving, vcetne stredni cesty (data 24)
+# // Prosit metadata hadling
+# // In-out data v processingu
+# // U scipionu udelat queue i nonqueue variantu na ciisb pouzit queue variantu
+# // Ukoncovani processingui  
+
 aparser = argparse.ArgumentParser(
     prog = 'lims-node',
     description = 'LIMS processing/controlling node',
@@ -63,12 +71,12 @@ def lims_api_session_provider():
 
 def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     engine = engine or exp.storage.engine
-    if (engine == "fs"):
+    if (engine.startswith("fs")):
         import fs_storage_engine
-        return fs_storage_engine.FsExperimentStorageEngine(exp, e_config, logger, module_config)
-    if (engine == "irods"):
+        return fs_storage_engine.fs_storage_engine_factory(exp, e_config, logger, module_config)
+    if (engine.startswith("irods")):
         import irods_storage_engine
-        return irods_storage_engine.IrodsExperimentStorageEngine(exp, e_config, logger, module_config)
+        return irods_storage_engine.irods_storage_engine_factory(exp, e_config, logger, module_config)
 
 
 

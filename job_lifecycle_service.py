@@ -15,6 +15,11 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
 
+        # def resolve_source_dir(self):
+        #     src_dir_original_path = self.exp.storage.source_directory
+        #     src_dir_path = self.config.lims_config.translate_path(src_dir_original_path, self.exp.secondary_id) or src_dir_original_path
+        #     return src_dir_path
+    
         def exp_start():
             # Called once when experiment is being started
             exp_engine.prepare()

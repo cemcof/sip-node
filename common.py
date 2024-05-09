@@ -199,3 +199,15 @@ def search_for_key(data, key):
             yield from search_for_key(item, key)
     else:
         return
+    
+def get_dict_val_by_path(data, path):
+    path_parts = path.split("/")
+    current = data
+    for part in path_parts:
+        if part in current:
+            current = current[part]
+        else:
+            return None
+        
+def to_safe_filename(self, string):
+    return re.sub(r'[\\/*?:"<>| ]', "_", string)
