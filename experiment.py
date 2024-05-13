@@ -467,8 +467,7 @@ class ExperimentStorageEngine:
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source_dir))
                 tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
                 if log_each_transfer:
-                    self.logger.info(f"TRANSFERED [{data_rule.tags}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec
-                                    \n {source_path.name}")
+                    self.logger.info(f"TRANSFERED [{data_rule.tags}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
                 if not keep_source_files:
                     source_path.unlink()
             except:

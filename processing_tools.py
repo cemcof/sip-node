@@ -112,7 +112,7 @@ class EmMoviesHandler:
             Returns: tuple (movie file path, metadata file path, path to gain file) or None if no raw movie data found"""
 
         # Get movie file path
-        movie_datarule: experiment.DataRuleWrapper = self.storage_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0]
+        movie_datarule: experiment.DataRuleWrapper = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
         first_movie = next(self.storage_engine.glob(movie_datarule.get_target_patterns()), None)
         
         self.logger.debug(f"First movie: {first_movie}")
@@ -120,12 +120,12 @@ class EmMoviesHandler:
             return None
         
         # Get metadata file path
-        moviemeta_data_rule: experiment.DataRuleWrapper = self.storage_engine.e_config.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
+        moviemeta_data_rule: experiment.DataRuleWrapper = self.storage_engine.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
         first_meta = next(self.storage_engine.glob(moviemeta_data_rule.get_target_patterns()), None)
         self.logger.debug(f"First meta: {first_meta}")
 
         # Now gain file
-        gain_file_rule = next(iter(self.storage_engine.e_config.data_rules.with_tags("gain", "raw")), None)
+        gain_file_rule = next(iter(self.storage_engine.data_rules.with_tags("gain", "raw")), None)
         if gain_file_rule:
             gain_ref = next(self.storage_engine.glob(gain_file_rule.get_target_patterns()), None)
             self.logger.debug(f"Gain ref: {gain_ref}")
@@ -142,7 +142,7 @@ class EmMoviesHandler:
                 
         for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
             # 1) Path to the source files
-            path_to_movies_relative : pathlib.Path = self.storage_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
+            path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0].target
             prot["filesPath"] = str(processing_source_path / path_to_movies_relative) 
             # 2) Pattern of the source files and movie suffix
             movie_path = movies_info[0]

@@ -44,9 +44,6 @@ class CryosparcWrapper(StateObj):
         
         return pc.stdout, pc.stderr
     
-    def _get_processing_source_path(self):
-        return self.exp_engine.resolve_target_location()
-        
     def create_project(self):
         args = {
             "-p": str(self.project_path),
@@ -64,7 +61,7 @@ class CryosparcWrapper(StateObj):
         movie_info = em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
-        path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir("movie", "raw")
+        path_to_movies_relative : pathlib.Path = self.exp_engine.resolve_target_location(self.exp_engine.get_tag_target_dir("movie", "raw"))
         processing_source_path = self._get_processing_source_path()
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(processing_source_path / path_to_movies_relative),
