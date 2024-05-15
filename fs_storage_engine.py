@@ -12,12 +12,14 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def __init__(self, experiment: ExperimentWrapper, logger: logging.Logger, data_rules: configuration.DataRulesWrapper, metadata_model: dict,
                  base_path, 
                  server_base_path,
+                 server: str,
                 
                  metadata_target="experiment.yml",
                  operator_links_folder=None) -> None:
         super().__init__(experiment, logger, data_rules, metadata_model, metadata_target)
         self.base_path = pathlib.Path(base_path)
         self.server_base_path = pathlib.Path(server_base_path)
+        self.server = server
         self.operator_links_folder = pathlib.Path(operator_links_folder) if operator_links_folder else None
 
     def _link_operator_directory(self):
@@ -45,7 +47,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def get_access_info(self):
         target_path = self.server_base_path / self.resolve_target_location().relative_to(self.base_path)
         return {
-            "Target": self.config["Server"],
+            "Target": self.server,
             "Path": str(target_path),
             "Token": None
         }
@@ -103,16 +105,17 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             yield f.relative_to(target)
     
 
-def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper):
-    conf: dict = module_config.get(exp.storage.engine)
+def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
+    conf: dict = module_config.get(engine or exp.storage.engine)
     if not conf:
         return None
-    
+    print(conf)
     return FsExperimentStorageEngine(
         exp, logger, e_config.data_rules, e_config.metadata["model"],
 
         base_path=conf["base_path"], 
         server_base_path=conf.get("server_base_path"),
+        server=conf.get("server"),
         metadata_target=e_config.metadata["target"],
         operator_links_folder=conf.get("operator_links_folder"),
     )

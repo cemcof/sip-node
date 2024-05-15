@@ -235,9 +235,8 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         return self.irods_collection.glob(patterns)
 
 
-def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper):
-
-    conf: dict = module_config.get(exp.storage.engine)
+def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
+    conf: dict = module_config.get(engine or exp.storage.engine)
     if not conf:
         return None
     

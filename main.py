@@ -73,10 +73,10 @@ def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: conf
     engine = engine or exp.storage.engine
     if (engine.startswith("fs")):
         import fs_storage_engine
-        return fs_storage_engine.fs_storage_engine_factory(exp, e_config, logger, module_config)
+        return fs_storage_engine.fs_storage_engine_factory(exp, e_config, logger, module_config, engine)
     if (engine.startswith("irods")):
         import irods_storage_engine
-        return irods_storage_engine.irods_storage_engine_factory(exp, e_config, logger, module_config)
+        return irods_storage_engine.irods_storage_engine_factory(exp, e_config, logger, module_config, engine)
 
 
 

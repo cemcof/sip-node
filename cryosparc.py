@@ -108,7 +108,7 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
         return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), active_experiments)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
-        cconf = self.module_config["CyrosparcConfig"]
+        cconf = self.module_config["CryosparcConfig"]
         cw = CryosparcWrapper(exp_engine, cconf)
         def running():
             path_to_movies_relative : pathlib.Path = exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target

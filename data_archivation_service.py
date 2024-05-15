@@ -13,8 +13,8 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         
         # We have experiment current storage engine
         # Our task is to move data to another storage engine, if desired (configured)
-        exp_target_storage_config = self.module_config["ArchivationStorage"]
-        exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_engine.e_config, exp_engine.logger, exp_target_storage_config, exp_target_storage_config["Engine"])
+        exp_target_storage_engine = self.module_config["archivation_storage"]
+        exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_engine.e_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
 
         # Check that both storages are accessible
         if not exp_engine.is_accessible() or not exp_target_storage.is_accessible():

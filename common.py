@@ -208,6 +208,7 @@ def get_dict_val_by_path(data, path):
             current = current[part]
         else:
             return None
+    return current
         
 def to_safe_filename(self, string):
     return re.sub(r'[\\/*?:"<>| ]', "_", string)

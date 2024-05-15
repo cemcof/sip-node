@@ -389,7 +389,7 @@ class ExperimentStorageEngine:
         data_year = self.exp.dt_created.strftime("%y")
         project_id = self.exp.data_model["ProjectId"]
         if project_id:
-            project_folder = common.to_safe_filename(project_id + "_" + self.exp.data_model["Project"]["Acronym"])
+            project_folder = common.to_safe_filename(project_id + "_" + self.exp.data_model["ProjectAcronym"])
             return f"DATA_{data_year}" / project_folder / self.exp.secondary_id
         else: 
             return f"DATA_{data_year}" / self.exp.secondary_id
