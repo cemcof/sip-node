@@ -101,8 +101,7 @@ class LimsConfigWrapper():
 
     @property
     def node(self):
-        return self._config["LimsNodes"][self.node_name]
-    
+        return LimsModuleConfigWrapper(None, self.node_name, self)
 
     def get_node_config(self, node_name):
         return self._config["LimsNodes"][node_name]
@@ -121,10 +120,13 @@ class LimsConfigWrapper():
         for k,v in self._config["LimsNodes"].items():
             mod = next(filter(lambda x: x["target"] == module_name, v["Modules"]), None)
             if mod:
-                yield v, mod
+                yield LimsModuleConfigWrapper(module_name, k, self)
 
-    def translate_path(self, path: pathlib.Path, safe_stem: str, for_node=None, to_proxy=False):
-        for mpp in self.node["PathMappings"] if not for_node else for_node["PathMappings"]:
+    def translate_path(self, path: pathlib.Path, safe_stem: str, path_mappings=None, to_proxy=False):
+        if not path_mappings:
+            path_mappings = self.node["PathMappings"]
+
+        for mpp in path_mappings:
             fromp = common.path_universal_factory(mpp["From"])
             to = common.path_universal_factory(mpp["To"])
             proxy = common.path_universal_factory(mpp["Proxy"]) if "Proxy" in mpp and mpp["Proxy"] else None
@@ -155,12 +157,12 @@ class LimsModuleConfigWrapper():
             val = common.get_dict_val_by_path(module_config, item_path)
             if val is not None:
                 return val
-            else:
-                # Try node config 
-                node_config = self.lims_config.get_node_config(self.node_name)
-                val = common.get_dict_val_by_path(node_config, item_path)
-                if val is not None:
-                    return val
+            
+        # Now try node config 
+        node_config = self.lims_config.get_node_config(self.node_name)
+        val = common.get_dict_val_by_path(node_config, item_path)
+        if val is not None:
+            return val
 
         # Try global config
         return common.get_dict_val_by_path(self.lims_config.config, item_path)

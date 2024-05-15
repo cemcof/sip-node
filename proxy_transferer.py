@@ -19,11 +19,9 @@ class ProxyTransferHandler(experiment.ExperimentModuleBase):
         if not target_mod: 
             return
         
-        node, mod = target_mod
-
         # Prepare path mappings
         # Find proxy destination
-        destination_dir = self.module_config.lims_config.translate_path(exp.storage.source_directory, exp.secondary_id, for_node=node, to_proxy=True)
+        destination_dir = self.module_config.lims_config.translate_path(exp.storage.source_directory, exp.secondary_id, for_node=target_mod["PathMappings"], to_proxy=True)
             
         if not destination_dir: 
             # If destination is same after remap, there is nothing to proxy
