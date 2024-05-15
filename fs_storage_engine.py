@@ -109,7 +109,7 @@ def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, log
     conf: dict = module_config.get(engine or exp.storage.engine)
     if not conf:
         return None
-    print(conf)
+    
     return FsExperimentStorageEngine(
         exp, logger, e_config.data_rules, e_config.metadata["model"],
 

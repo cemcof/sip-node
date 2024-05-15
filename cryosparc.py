@@ -15,17 +15,17 @@ class CryosparcWrapper(StateObj):
         self.exp_engine = exp_engine
         self.exp = exp_engine.exp
         self.config = config
-        self.python_exec = config.get("PythonExec", "python3")
-        self.cryosparc_cli_path = config.get("CryosparcCliPath", "cryosparc_cli.py")
-        self.cm_path = config["CmPath"]
+        self.python_exec = config.get("python_exec", "python3")
+        self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc_cli.py")
+        self.cm_path = config["cm_path"]
 
         self.projects_dir = self.exp_engine.resolve_target_location() 
         self.projects_dir = self.projects_dir / exp_engine.get_tag_target_dir("processed") if self.projects_dir else config["ProjectsDir"]
         self.project_path = self.projects_dir / f"cryosparc_{exp_engine.exp.secondary_id}"
         self.project_name = self.project_path.name
 
-        self.email = config["Email"]
-        self.cluster = config["ComputationalCluster"]
+        self.email = config["email"]
+        self.cluster = config["computational_cluster"]
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
         args = [self.python_exec, self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
@@ -58,6 +58,7 @@ class CryosparcWrapper(StateObj):
 
         # Get exposure values and set them to the workflow
         em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
+        
         movie_info = em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
@@ -108,7 +109,7 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
         return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), active_experiments)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
-        cconf = self.module_config["CryosparcConfig"]
+        cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
         def running():
             path_to_movies_relative : pathlib.Path = exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target

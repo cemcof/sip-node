@@ -390,9 +390,9 @@ class ExperimentStorageEngine:
         project_id = self.exp.data_model["ProjectId"]
         if project_id:
             project_folder = common.to_safe_filename(project_id + "_" + self.exp.data_model["ProjectAcronym"])
-            return f"DATA_{data_year}" / project_folder / self.exp.secondary_id
+            return pathlib.Path(f"DATA_{data_year}") / project_folder / self.exp.secondary_id
         else: 
-            return f"DATA_{data_year}" / self.exp.secondary_id
+            return pathlib.Path(f"DATA_{data_year}") / self.exp.secondary_id
 
     def read_metadata(self):
         if not self.metadata_exists():
@@ -423,10 +423,10 @@ class ExperimentStorageEngine:
         return source_file_relative
     
     def get_tag_target_dir(self, *tags):
-        dr = self.data_rules.with_tags(tags)
+        dr = self.data_rules.with_tags(*tags)
         if not dr: 
             raise ValueError(f"No target configured for tags: {tags}")
-        return dr[0].target
+        return dr.data_rules[0].target
     
     def file_exists(self, path_relative: pathlib.Path):
         raise NotImplementedError()
