@@ -42,8 +42,10 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
             exp_running()
 
         def exp_running():
-            exp_engine.sniff_and_process_metafile()
-            exp_engine.sniff_and_transfer_raw()
+            exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.storage.source_directory, exp_engine.exp.secondary_id)
+            print(exp_data_source)
+            exp_engine.sniff_and_process_metafile(exp_data_source)
+            exp_engine.sniff_and_transfer_raw(exp_data_source)
 
 
         def exp_finish():

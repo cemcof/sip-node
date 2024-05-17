@@ -3,11 +3,16 @@ import experiment
 import data_tools
 import logging
 import configuration
+import experiment
 
-class ProxyTransferHandler(experiment.ExperimentModuleBase):
+class ProxyTransferHandler(configuration.LimsNodeModule):
     
-    def on_experiment_running(self, exp_engine: experiment.ExperimentStorageEngine):
-        exp = exp_engine.exp
+    def step(self):
+        exps =  experiment.ExperimentsApi(self._api_session).get_active_experiments()
+        for exp in exps:
+            self._to_proxy_for_experiment(exp)
+
+    def _to_proxy_for_experiment(self, exp):
         # In order to be able to perform proxy transfer, we need to know which node is the "storage" node for given experiment
         # For now do it this way, not very clean tho:
         # 1. Find job lifecycle services and their configuration

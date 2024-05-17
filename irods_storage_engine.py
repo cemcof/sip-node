@@ -166,8 +166,10 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
                 experiment=self.exp, 
                 logger=self.logger, 
                 data_rules=self.data_rules, 
+                metadata_model=self.metadata_model,
                 base_path=self.mount_point, 
                 server_base_path=self.mount_point, 
+                server=None,
                 metadata_target=self.metadata_target)
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
