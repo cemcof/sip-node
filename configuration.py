@@ -123,7 +123,7 @@ class LimsConfigWrapper():
             if mod:
                 yield LimsModuleConfigWrapper(module_name, k, self)
 
-    def translate_path(self, path: pathlib.Path, safe_stem: str, path_mappings=None, to_proxy=False):
+    def translate_path(self, path: pathlib.Path, safe_stem: str, path_mappings=None, to_proxy=False) -> pathlib.Path:
         if not path_mappings:
             path_mappings = self.node["PathMappings"]
 
@@ -139,7 +139,7 @@ class LimsConfigWrapper():
 
             rel = common.try_translate_path(path, fromp, to)
             if rel and proxy:
-                return to / safe_stem / rel
+                return to / safe_stem
             elif rel:
                 return to / rel
         return None
@@ -153,17 +153,14 @@ class LimsModuleConfigWrapper():
         self.node_name = node_name
 
     def get(self, item_path):
-        print(item_path, self.module_name)
         if self.module_name:
             module_config = self.lims_config.get_module_config(self.module_name, self.node_name)
-            print("MC", module_config)
             val = common.get_dict_val_by_path(module_config, item_path)
             if val is not None:
                 return val
             
         # Now try node config 
         node_config = self.lims_config.get_node_config(self.node_name)
-        print(node_config)
         val = common.get_dict_val_by_path(node_config, item_path)
         if val is not None:
             return val

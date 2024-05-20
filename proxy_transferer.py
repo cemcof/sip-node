@@ -23,7 +23,6 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # 2. From them, find the one that is configured to handle this experiment's type
         node_mods = list(lims_conf.find_module_config_nodes("job_lifecycle_service.JobLifecycleService"))
         matched_mods = filter(lambda x: exp.exp_type_matches(x["ExperimentTypes"]), node_mods)
-        print(node_mods, matched_mods)
         target_mod = next(matched_mods, None)
 
         # There is no such module, nothing to do
@@ -38,7 +37,6 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
             # If destination is same after remap, there is nothing to proxy
             return
         
-
         data_rules = lims_conf.get_experiment_config(exp.instrument, exp.technique).data_rules
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
@@ -49,10 +47,11 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRuleWrapper):
             path_rel = source_path.relative_to(source_dir)
             target = destination_dir / path_rel
-            self.logger.info(f"PROXY COPY: {source_path} to {target}")
+            target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
             if not exp.storage.keep_source_files:
                 source_path.unlink()
+            self.logger.info(f"PROXY COPY: {source_path} to {target}")
 
         sniffer = data_tools.DataRulesSniffer(source_dir, data_rules, proxy_transfer_handler)
         sniffer.sniff_and_consume()
