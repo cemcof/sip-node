@@ -204,11 +204,11 @@ def get_dict_val_by_path(data, path):
     path_parts = path.split("/")
     current = data
     for part in path_parts:
-        if part in current:
+        if current is not None and part in current:
             current = current[part]
         else:
             return None
     return current
         
-def to_safe_filename(self, string):
+def to_safe_filename(string):
     return re.sub(r'[\\/*?:"<>| ]', "_", string)
