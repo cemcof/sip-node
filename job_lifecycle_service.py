@@ -51,7 +51,8 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
         def exp_finish():
             # Called once when experiment is finishing, send email
             if exp_engine.exp.notify_user:
-                exp_engine.exp.exp_api.send_email(exp_engine.e_config["JobFinish"])
+                email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["JobFinish"]
+                exp_engine.exp.exp_api.send_email(email_conf)
             exp_engine.exp.exp_api.patch_experiment({
                 "Storage": {"State": experiment.StorageState.IDLE.value},
                 "State": experiment.JobState.FINISHED.value

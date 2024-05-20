@@ -47,6 +47,8 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRuleWrapper):
             path_rel = source_path.relative_to(source_dir)
             target = destination_dir / path_rel
+            if target.exists() and target.stat().st_mtime >= source_path.stat().st_mtime:
+                return
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
             if not exp.storage.keep_source_files:

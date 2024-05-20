@@ -351,7 +351,7 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
   
             # Sniff for processing result files and submit them ba0ck to the storage
             # But dont use experiment logger
-            exp_engine.sniff_and_transfer(sciw.project_directory, exp_engine.e_config.data_rules.with_tags("processed"), keep_source_files=True, logger=logging.getLogger("ProcessingTransfer"))
+            exp_engine.sniff_and_transfer(sciw.project_directory, exp_engine.data_rules.with_tags("processed"), keep_source_files=True, logger=logging.getLogger("ProcessingTransfer"))
 
         def state_project_finished():
             # sciw.logger.info("Scipion project finished")
