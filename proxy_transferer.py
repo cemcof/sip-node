@@ -22,8 +22,9 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # 1. Find job lifecycle services and their configuration
         # 2. From them, find the one that is configured to handle this experiment's type
         node_mods = list(lims_conf.find_module_config_nodes("job_lifecycle_service.JobLifecycleService"))
-        print(node_mods)
-        target_mod = next(filter(lambda x: exp.exp_type_matches(x["ExperimentTypes"]), node_mods), None)
+        matched_mods = filter(lambda x: exp.exp_type_matches(x["ExperimentTypes"]), node_mods)
+        print(node_mods, matched_mods)
+        target_mod = next(matched_mods, None)
 
         # There is no such module, nothing to do
         if not target_mod: 
