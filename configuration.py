@@ -152,14 +152,17 @@ class LimsModuleConfigWrapper():
         self.node_name = node_name
 
     def get(self, item_path):
+        print(item_path, self.module_name)
         if self.module_name:
             module_config = self.lims_config.get_module_config(self.module_name)
+            print("MC", module_config)
             val = common.get_dict_val_by_path(module_config, item_path)
             if val is not None:
                 return val
             
         # Now try node config 
         node_config = self.lims_config.get_node_config(self.node_name)
+        print(node_config)
         val = common.get_dict_val_by_path(node_config, item_path)
         if val is not None:
             return val
