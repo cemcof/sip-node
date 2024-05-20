@@ -103,14 +103,15 @@ class LimsConfigWrapper():
     def node(self):
         return LimsModuleConfigWrapper(None, self.node_name, self)
 
-    def get_node_config(self, node_name):
-        return self._config["LimsNodes"][node_name]
+    def get_node_config(self, node_name=None):
+        return self._config["LimsNodes"][node_name or self.node_name]
+    
+    def get_module_config(self, module_name, node_name=None):
+        return next(filter(lambda x: x["target"] == module_name, self.get_node_config(node_name)["Modules"]), None)
     
     def get_experiment_config(self, instrument, technique):
         return JobConfigWrapper(self._config["Experiments"][instrument][technique])
 
-    def get_module_config(self, module_name):
-        return next(filter(lambda x: x["target"] == module_name, self.node["Modules"]), None)
     
     def find_module_config_any_node(self, module_name):
         nodes = self.find_module_config_nodes(module_name)
@@ -154,7 +155,7 @@ class LimsModuleConfigWrapper():
     def get(self, item_path):
         print(item_path, self.module_name)
         if self.module_name:
-            module_config = self.lims_config.get_module_config(self.module_name)
+            module_config = self.lims_config.get_module_config(self.module_name, self.node_name)
             print("MC", module_config)
             val = common.get_dict_val_by_path(module_config, item_path)
             if val is not None:
