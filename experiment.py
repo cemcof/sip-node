@@ -5,7 +5,6 @@ import re
 
 import yaml
 import common, configuration
-import data_tools as filebrowser
 import json
 import datetime
 import requests
@@ -15,7 +14,7 @@ import enum
 import uuid
 import inspect, tempfile
 from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRuleWrapper
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRuleWrapper, MetadataModel
 
 
 class JobState(enum.Enum):
@@ -305,49 +304,34 @@ class ExperimentWrapper:
             if re.match(p, self.exp_type):
                 return True
         return False
-    
-    def extract_metadata(self, metadata_model):
-
-        def pick(key: str, from_obj, default=None):
-            key = key.split(":")[-1] # Remove prefix if any
-            tmp_val = from_obj
-            for subkey in key.split("/"):
-                try:
-                    tmp_val = tmp_val[subkey]
-                except (KeyError, TypeError): 
-                    return default
-            return tmp_val
-                
-        def pick_from_processing(key: str):
-            key = key.split(":")[-1]
-            val = next(common.search_for_key(key), None)
-            # TODO - look for the Unit in workflow - problematic 
-            return val, None
-
-        # Basic metadata (experiment)
-        for k,v in filter(lambda x: x[1].startswith("exp:"), metadata_model.items()):
-            val = pick(v, self._data)
-            # print(f"Yielding: {k}, {val}, None")
-            yield k, val, None
-
-        # Metadata form workflows, this is more dificult
-        for k,v in filter(lambda x: x[1].startswith("processing:"), metadata_model.items()):
-            val, unit = pick_from_processing(v)
-            # print(f"Yielding: {k}, {val}, {unit}")
-            yield k, val, unit
-
 
 class ExperimentsApi:
     def __init__(self, http_session: requests.Session) -> None:
         self._http_session = http_session
 
     def get_active_experiments(self):
-        return self.get_experiments({"expState": JobState.ACTIVE.value})
+        return self.get_experiments_by_states(exp_state=JobState.ACTIVE)
         
     def get_experiments(self, queryData={}):
         result = self._http_session.get("experiments", params=queryData)
         expData = result.json()
         return [ExperimentWrapper(self.for_experiment(x["Id"]), x) for x in expData]
+
+    def get_experiments_by_states(self, exp_state: Union[JobState, List[JobState], None]=None,
+                                        storage_state: Union[StorageState, List[StorageState], None]=None,
+                                        processing_state: Union[ProcessingState, List[ProcessingState], None]=None,
+                                        publication_state: Union[PublicationState, List[PublicationState], None]=None):
+        queryData = {}
+        if exp_state:
+            queryData["expState"] = exp_state.value if isinstance(exp_state, JobState) else ",".join([s.value for s in exp_state])
+        if storage_state:
+            queryData["storageState"] = storage_state.value if isinstance(storage_state, StorageState) else ",".join([s.value for s in storage_state])
+        if processing_state:
+            queryData["processingState"] = processing_state.value if isinstance(processing_state, ProcessingState) else ",".join([s.value for s in processing_state])
+        if publication_state:
+            queryData["publicationState"] = publication_state.value if isinstance(publication_state, PublicationState) else ",".join([s.value for s in publication_state])
+        
+        return self.get_experiments(queryData)
 
     def for_experiment(self, id):
         return ExperimentApi(id, self._http_session)
@@ -357,7 +341,7 @@ class ExperimentStorageEngine:
                  experiment: ExperimentWrapper, 
                  logger: logging.Logger,
                  data_rules: DataRulesWrapper,
-                 metadata_model: dict,
+                 metadata_model: Union[dict, MetadataModel],
 
                  metadata_target="experiment.yml"
                  ) -> None:
@@ -365,7 +349,7 @@ class ExperimentStorageEngine:
         self.logger = logger
         self.metadata_target = pathlib.Path(metadata_target)
         self.data_rules = data_rules
-        self.metadata_model = metadata_model
+        self.metadata_model = metadata_model if isinstance(metadata_model, MetadataModel) else MetadataModel(metadata_model)
 
     def is_accessible(self):
         """ Check if the storage is accessible from current node with current configuration """
@@ -378,6 +362,12 @@ class ExperimentStorageEngine:
     def get_access_info(self):
         """ Get data access information for the storage """
         raise NotImplementedError()
+    
+    def has_same_location(self, other: 'ExperimentStorageEngine'):
+        """ Check if the storage has the same location as other storage """
+        first_loc = self.resolve_target_location()
+        second_loc = self.resolve_target_location()
+        return first_loc is not None and second_loc is not None and first_loc == second_loc
     
     def resolve_target_location(self, src_relative: pathlib.Path=None) -> pathlib.Path:
         raise NotImplementedError()
@@ -448,35 +438,27 @@ class ExperimentStorageEngine:
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         """ Get file from storage to file system """
         raise NotImplementedError()
+
+    def download(self, target: pathlib.Path, data_rules: DataRulesWrapper=None, session_name="download"):
+        data_rules = data_rules or self.data_rules
+        """ Download file or directory from the storage to local target directory """
+        raise NotImplementedError()
+    
+    def upload(self, source: pathlib.Path, rules: DataRulesWrapper, session_name="upload", keep_source_files=True):
+        raise NotImplementedError()
     
     def purge(self):
         """ Purge all data from the storage """
         raise NotImplementedError()
     
-    def sniff_and_transfer_raw(self, source_path):
+    def upload_raw(self, source_path):
         source_path = pathlib.Path(source_path)
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
         raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRuleWrapper(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
-        self.sniff_and_transfer(source_path, raw_rules, name="raw", keep_source_files=self.exp.storage.keep_source_files)
+        self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
 
-    def sniff_and_transfer(self, source_dir: pathlib.Path, rules: DataRulesWrapper, name: str="sniffer", keep_source_files=True, log_each_transfer=True):
-        """ Sniff files in source directory and transfer them to storage """
-        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
-            try:
-                relative_target = data_rule.translate_to_target(source_path.relative_to(source_dir))
-                tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
-                if log_each_transfer:
-                    self.logger.info(f"TRANSFERED [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
-                if not keep_source_files:
-                    source_path.unlink()
-            except:
-                self.logger.error(f"Failed to transfer {source_path} to {relative_target}")
-
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{name}_{self.exp.secondary_id}.dat"
-        self.logger.debug(f"Using tmp file for sniffer metadata {tmp_file}")
-        sniffer = DataRulesSniffer(source_dir, rules, sniff_consumer, tmp_file)
-        sniffer.sniff_and_consume()
+    
 
     def sniff_and_process_metafile(self, source_path):
         source_path = pathlib.Path(source_path)
@@ -489,19 +471,32 @@ class ExperimentStorageEngine:
         sniffer.sniff_and_consume()
 
     def extract_metadata(self):
-        metad = self.exp.extract_metadata(self.metadata_model)
-        metad = { k: v for k,v,_ in metad }
+        """ Using the configured metadata model, extract metadata from the sources"""
+        def from_exp_source(path: str):
+            return common.get_dict_val_by_path(self.exp.data_model, path)
+
+        def from_processing_source(key: str):
+            return next(common.search_for_key(self.exp.processing.workflow, key), None)
+
+        metad = self.metadata_model.extract_metadata({
+            "exp": from_exp_source, 
+            "processing": from_processing_source
+            })
         return metad
 
     def restore_metadata(self, metadata={}):
         """ Restore metadata from multiple sources (by given precedence, later overrides earlier):
-            - From current metadata file (if exists)
             - From experiment data
+            - From current metadata file (if exists)
             - From given metadata parameter, if any
         """
 
         # Read metadata from file
         metad = {}
+        # Read metadata from experiment
+        extracted_meta = self.extract_metadata()
+        metad.update({ k: v for k, v, _ in extracted_meta })
+
         if self.metadata_exists():
             try:
                 metad_yaml = self.read_file(self.metadata_target)
@@ -512,8 +507,6 @@ class ExperimentStorageEngine:
             except:
                 self.logger.warning(f"Failed to read metadata from {self.metadata_target}")
 
-        # Read metadata from experiment
-        metad.update(self.extract_metadata())
 
         # Read metadata from parameter
         metad.update(metadata)
@@ -524,6 +517,10 @@ class ExperimentStorageEngine:
         self.write_file(self.metadata_target, metad_yaml)
 
         return metad
+
+    def transfer_to(self, target: 'ExperimentStorageEngine', *data_tags):
+        """ Transfer data from this storage to another """
+        raise NotImplementedError()
 
 class ExperimentModuleBase(configuration.LimsNodeModule):
     def __init__(self, name, logger, lims_logger, config: configuration.LimsModuleConfigWrapper, api_session, exp_storage_engine_factory):

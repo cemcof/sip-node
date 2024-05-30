@@ -4,9 +4,7 @@ import experiment, tempfile
 
 class DataArchivationService(experiment.ExperimentModuleBase):
     def provide_experiments(self):
-        return experiment.ExperimentsApi(self._api_session).get_experiments(
-            {"storageState": experiment.StorageState.ARCHIVATION_REQUESTED.value}
-        )
+        return experiment.ExperimentsApi(self._api_session).get_experiments_by_states(storage_state=experiment.StorageState.ARCHIVATION_REQUESTED)
     
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
 
@@ -28,17 +26,19 @@ class DataArchivationService(experiment.ExperimentModuleBase):
             }
         })
 
+
         # Archive (=move) data
         try:
+            exp_engine.transfer_to(exp_target_storage)
             # Glob over all files in source storage and move it one by one to target storage for now
             # However, there sure is a better and more optimal way, for now do it through temporary file "buffer"
-            tmpfile = tempfile.NamedTemporaryFile()
-            tmpfilepath = pathlib.Path(tmpfile.name)
-            for file in exp_engine.glob(["**/*"]):
-                exp_engine.get_file(file, tmpfilepath)
-                exp_target_storage.put_file(file, tmpfilepath)
+            # tmpfile = tempfile.NamedTemporaryFile()
+            # tmpfilepath = pathlib.Path(tmpfile.name)
+            # for file in exp_engine.glob(["**/*"]):
+            #     exp_engine.get_file(file, tmpfilepath)
+            #     exp_target_storage.put_file(file, tmpfilepath)
 
-            # All data is transfered - purge the source storage    
+            # # All data is transfered - purge the source storage    
             exp_engine.purge()
 
         except Exception as e:
@@ -50,8 +50,8 @@ class DataArchivationService(experiment.ExperimentModuleBase):
             })
             exp_engine.logger.exception(f"Failed to archive data: {e}")
             return
-        finally:
-            tmpfile.close()
+        # finally:
+        #     tmpfile.close()
 
         # Update experiment storage info with new access storage
         exp_engine.exp.exp_api.patch_experiment({
@@ -62,4 +62,5 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         })
 
         # Send notification email that the archivation was done 
-        exp_engine.exp.exp_api.send_email(exp_engine.e_config["DataArchived"])
+        email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["DataArchived"]
+        exp_engine.exp.exp_api.send_email(email_conf)

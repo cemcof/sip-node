@@ -1,5 +1,6 @@
 import logging
-import time
+import tempfile
+import time, os, glob
 import configuration
 import experiment
 from experiment import ExperimentWrapper
@@ -24,7 +25,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
 
     def _link_operator_directory(self):
         """If configured, create a link to the operator directory"""
-        if not self.operator_links_folder:
+        if not self.operator_links_folder: 
             return None
 
         # Create link
@@ -103,7 +104,37 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         target = self.resolve_target_location()
         for f in multiglob(target, patterns):
             yield f.relative_to(target)
+
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, keep_source_files=True, log=True):
+        def sniff_consumer(source_path: pathlib.Path, data_rule: data_tools.DataRuleWrapper):
+            try:
+                relative_target = data_rule.translate_to_target(source_path.relative_to(source))
+                tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                if log:
+                    self.logger.info(f"TRANSFERED [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
+                if not keep_source_files:
+                    source_path.unlink()
+            except:
+                self.logger.error(f"Failed to transfer {source_path} to {relative_target}")
+
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        sniffer = data_tools.DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
+        sniffer.sniff_and_consume()
     
+    def transfer_to(self, target: experiment.ExperimentStorageEngine, metafile: pathlib.Path=None, data_tags=None, move=False):
+        same_loc = self.has_same_location(target)
+        from_loc = self.resolve_target_location()
+        if same_loc: 
+             # If same location, no physical transfer must be done, however, get info about new sniffed files? 
+            return 
+        
+        def transfer(f: pathlib.Path, data_rule):
+            target.put_file(f.relative_to(from_loc), f)
+        # Prepare data rules sniffer 
+        data_rules = self.data_rules if data_tags else self.data_rules.with_tags(*data_tags)
+        sniffer = data_tools.DataRulesSniffer(from_loc, data_rules, target.put_file, metafile=metafile)
+        pass
+
 
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

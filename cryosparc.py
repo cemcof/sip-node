@@ -5,6 +5,7 @@ from io import TextIOWrapper
 import subprocess
 from common import StateObj, exec_state
 import processing_tools
+import fs_storage_engine
 import experiment
 
 class CryosparcWrapper(StateObj):
@@ -19,10 +20,12 @@ class CryosparcWrapper(StateObj):
         self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc_cli.py")
         self.cm_path = config["cm_path"]
 
-        self.projects_dir = self.exp_engine.resolve_target_location() 
-        self.projects_dir = self.projects_dir / exp_engine.get_tag_target_dir("processed") if self.projects_dir else config["ProjectsDir"]
+        target_loc = self.exp_engine.resolve_target_location()
+        self.projects_dir = target_loc / exp_engine.get_tag_target_dir("processed") if target_loc else config["projects_dir"]
         self.project_path = self.projects_dir / f"cryosparc_{exp_engine.exp.secondary_id}"
         self.project_name = self.project_path.name
+        self.raw_data_dir = target_loc if target_loc else self.projects_dir / f"raw_cryosparc_{exp_engine.exp.secondary_id}"
+
 
         self.email = config["email"]
         self.cluster = config["computational_cluster"]
@@ -105,13 +108,28 @@ class CryosparcWrapper(StateObj):
 class CryosparcProcessingHandler(experiment.ExperimentModuleBase): 
 
     def provide_experiments(self):
-        active_experiments = super().provide_experiments()
-        return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), active_experiments)
+        exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+            processing_state=[
+                experiment.ProcessingState.UNINITIALIZED, 
+                       experiment.ProcessingState.READY, 
+                       experiment.ProcessingState.RUNNING]
+            )
+        
+        return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
+
+        
         def running():
+            # Fetch new data from storage -> processing project
+            exp_engine.download(cw.raw_data_dir, TODO DRL, session_name="cs_processing")
+
+            # Return new data from processing project -> storage
+            exp_engine.upload(cw.project_path)
+
+            # Check changes, kill the process?
             path_to_movies_relative : pathlib.Path = exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
             processing_source_path = cw._get_processing_source_path()
             print("srcp", path_to_movies_relative, processing_source_path)

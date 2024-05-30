@@ -4,9 +4,12 @@ from experiment import ExperimentStorageEngine
 class JobLifecycleService(experiment.ExperimentModuleBase):
 
     def provide_experiments(self):
-        exps = experiment.ExperimentsApi(self._api_session).get_experiments({
-            "expState": f"{experiment.JobState.START_REQUESTED.value},{experiment.JobState.ACTIVE.value},{experiment.JobState.STOP_REQUESTED.value}"
-        })
+        exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+            exp_state=[experiment.JobState.START_REQUESTED, 
+                       experiment.JobState.ACTIVE, 
+                       experiment.JobState.STOP_REQUESTED]
+            )
+
 
         # Select only experiments according to configuration
         types = self.module_config["ExperimentTypes"]
@@ -45,7 +48,7 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
             exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.storage.source_directory, exp_engine.exp.secondary_id)
             print(exp_data_source)
             exp_engine.sniff_and_process_metafile(exp_data_source)
-            exp_engine.sniff_and_transfer_raw(exp_data_source)
+            exp_engine.upload_raw(exp_data_source)
 
 
         def exp_finish():

@@ -4,9 +4,7 @@ from experiment import ExperimentStorageEngine
 
 class DataExpirationService(experiment.ExperimentModuleBase):
     def provide_experiments(self):
-        return experiment.ExperimentsApi(self._api_session).get_experiments(
-            {"storageState": experiment.StorageState.EXPIRATION_REQUESTED.value}
-        )
+        return experiment.ExperimentsApi(self._api_session).get_experiments_by_states(storage_state=experiment.StorageState.EXPIRATION_REQUESTED)
     
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
 
@@ -45,4 +43,5 @@ class DataExpirationService(experiment.ExperimentModuleBase):
         })
 
         # Send notification email that the expiration was done 
-        exp_engine.exp.exp_api.send_email(exp_engine.e_config["DataExpired"])
+        email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["DataExpired"]
+        exp_engine.exp.exp_api.send_email(email_conf)

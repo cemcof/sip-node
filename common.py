@@ -200,15 +200,22 @@ def search_for_key(data, key):
     else:
         return
     
-def get_dict_val_by_path(data, path):
-    path_parts = path.split("/")
-    current = data
-    for part in path_parts:
-        if current is not None and part in current:
-            current = current[part]
-        else:
-            return None
-    return current
+def get_dict_val_by_path(data, path, default=None):
+    # path_parts = path.split("/")
+    # current = data
+    # for part in path_parts:
+    #     if current is not None and part in current:
+    #         current = current[part]
+    #     else:
+    #         return None
+    # return current
+    tmp_val = data
+    for subkey in path.split("/"):
+        try:
+            tmp_val = tmp_val[subkey]
+        except (KeyError, TypeError): 
+            return default
+    return tmp_val
         
 def to_safe_filename(string):
     return re.sub(r'[\\/*?:"<>| ]', "_", string)

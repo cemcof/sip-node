@@ -459,3 +459,38 @@ def log_sniffer_file_source_factory(directory: pathlib.Path, globs_relative: typ
             
 
 
+class MetadataModel:
+    def __init__(self, model: dict) -> None:
+        self.model = model
+
+    def get_metakey_info(self, key: str):
+        if isinstance(self.model[key], dict):
+            default = self.model[key].get("Default", None)
+            sources = self.model[key].get("Sources", [])
+            unit = self.model[key].get("Unit", None)
+            return sources, default, unit
+        
+        if isinstance(self.model[key], list):
+            return self.model[key], None, None
+        
+        if isinstance(self.model[key], str):
+            return [self.model[key]], None, None
+        
+        return None, None, None
+
+
+    def extract_metadata(self, source_handlers: dict):
+        """ Extract metadata from sources """
+
+        for k in self.model:
+            sources, default, unit = self.get_metakey_info(k)
+            if sources is not None:
+                for s in sources:
+                    source, param = s.split(":")
+                    if source in source_handlers:
+                        val = source_handlers[source](param)
+                        if val is not None:
+                            yield k, val, unit
+                            continue
+
+                yield k, default, unit

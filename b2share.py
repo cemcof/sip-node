@@ -94,7 +94,9 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
 
     # This override gets us experiments ready for publishing instead of the active ones
     def provide_experiments(self):
-        publication_requested_exps = experiment.ExperimentsApi(self._api_session).get_experiments({"publicationState": f"{experiment.PublicationState.PUBLICATION_REQUESTED.value},{experiment.PublicationState.DRAFT_CREATION_REQUESTED.value}"})
+        publication_requested_exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+            publication_state=[experiment.PublicationState.PUBLICATION_REQUESTED, experiment.PublicationState.DRAFT_CREATION_REQUESTED]
+            )
         # Only these for b2share
         return filter(lambda e: e.publication.engine == "b2share" and e.storage.archive, publication_requested_exps)
         
@@ -126,7 +128,8 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
             }})
 
             # Notify by email
-            exp.exp_api.send_email(exp_engine.e_config["JobPublished"])
+            email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["JobPublished"]
+            exp.exp_api.send_email(email_conf)
             
         def create_draft():
             b2share_draft = b2Share_draft_factory(self.module_config["B2ShareConnection"], draft_id=None)
