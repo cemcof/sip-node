@@ -49,8 +49,8 @@ class CryosparcEngine:
 
 
     def create_project(self, project_path: pathlib.Path, workflow):
-        project_dir, project_name = project_path.parent, str(project_path.name)
-        project_uid = self.cli.create_empty_project(owner_user_id=self.user_id, project_container_dir=str(project_dir), title=project_name)
+        project_container_dir, project_dir, project_name = project_path.parent, project_path, str(project_path.name)
+        project_uid = self.cli.create_empty_project(owner_user_id=self.user_id, project_container_dir=str(project_container_dir), project_dir=str(project_dir), title=project_name)
         # workflow = processing_tools.WorkflowWrapper(workflow)
 
         # Create a new Live session
@@ -61,7 +61,7 @@ class CryosparcEngine:
         
         # Write the project and session id to the output
         print(f"{project_uid}/{session_uid}", file=self.file_out)
-
+ 
     def run_project_session(self, session_id, project_id):
         self.rtp.start_session(project_uid=project_id, session_uid=session_id, user_id=self.user_id)
 

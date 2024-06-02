@@ -119,7 +119,26 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
 
         tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
         sniffer = data_tools.DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
-        sniffer.sniff_and_consume()
+        return sniffer.sniff_and_consume()
+    
+    def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
+        data_rules = data_rules or self.data_rules
+        src = self.resolve_target_location()
+        def download_consumer(source_path: pathlib.Path, data_rule: data_tools.DataRuleWrapper):
+            relative_target = data_rule.translate_to_target(source_path.relative_to(src))
+            absolute_target = target / relative_target
+            # Skip if target is same as the source 
+            print("DW", absolute_target, source_path)
+            if absolute_target == source_path:
+                return
+            absolute_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, absolute_target)
+
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        sniffer = data_tools.DataRulesSniffer(src, data_rules, download_consumer, tmp_file)
+        print(tmp_file)
+        return sniffer.sniff_and_consume()
+        
     
     def transfer_to(self, target: experiment.ExperimentStorageEngine, metafile: pathlib.Path=None, data_tags=None, move=False):
         same_loc = self.has_same_location(target)
