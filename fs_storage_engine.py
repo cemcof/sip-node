@@ -29,7 +29,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             return None
 
         # Create link
-        target_path = self.operator_links_folder / f"OPERATORS" / self.exp.data_model["Operator"]["Fullname"].replace(" ", "_") / self.exp.secondary_id
+        target_path = self.operator_links_folder / self.exp.data_model["Operator"]["Fullname"].replace(" ", "_") / self.exp.secondary_id
 
         # Ensure that the target directory exists
         target_path.parent.mkdir(parents=True, exist_ok=True)
