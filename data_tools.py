@@ -28,6 +28,9 @@ class DataRuleWrapper:
         """ Gets glob pattern through which files for this rule can be searched in the target location """
         target_base = self.target if not self.keep_tree else self.target / "**"
         return [str(target_base / pathlib.Path(p).name) for p in self.patterns]
+    
+    def __str__(self) -> str:
+        return f"DataRuleWrapper({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.skip_if_exists})"
 
 class DataRulesWrapper:
     def __init__(self, data_rules: list) -> None:
@@ -66,6 +69,7 @@ class DataRulesSniffer:
         return path.name.startswith("_") 
 
     def sniff_and_consume(self):
+        consumation_start = time.time()
         meta = self._load_metafile() or {}
         metafile_append = self.metafile.open("a") if self.metafile else None
 
@@ -91,6 +95,12 @@ class DataRulesSniffer:
                         # Consumation failed - TODO - implement some error handling strategy
                         print(f"Consumation of {f} failed", file=sys.stderr)
                         pass
+        metafile_append.close()
+        # Return list of tuples of consumed files (only new ones in this sniff run) and their consumation times, sorted by the time
+        filtered_new = filter(lambda x: x[1] > consumation_start, meta.items())
+        return sorted(filtered_new, key=lambda x: x[1])
+
+
 
 class DataSyncUnit:
     def __init__(self, src_path : pathlib.Path, dst_path : pathlib.Path, logger):
@@ -484,13 +494,15 @@ class MetadataModel:
 
         for k in self.model:
             sources, default, unit = self.get_metakey_info(k)
+            result = None
             if sources is not None:
                 for s in sources:
                     source, param = s.split(":")
                     if source in source_handlers:
                         val = source_handlers[source](param)
                         if val is not None:
-                            yield k, val, unit
-                            continue
+                            result = val
+                            break
+            result = result if result is not None else default
+            yield k, result, unit 
 
-                yield k, default, unit

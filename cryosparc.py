@@ -21,11 +21,11 @@ class CryosparcWrapper(StateObj):
         self.cm_path = config["cm_path"]
 
         target_loc = self.exp_engine.resolve_target_location()
-        self.projects_dir = target_loc / exp_engine.get_tag_target_dir("processed") if target_loc else config["projects_dir"]
+        # Pokracovat tady - zadny processed target rule neni
+        self.projects_dir = target_loc if target_loc else pathlib.Path(config["projects_dir"])
         self.project_path = self.projects_dir / f"cryosparc_{exp_engine.exp.secondary_id}"
         self.project_name = self.project_path.name
         self.raw_data_dir = target_loc if target_loc else self.projects_dir / f"raw_cryosparc_{exp_engine.exp.secondary_id}"
-
 
         self.email = config["email"]
         self.cluster = config["computational_cluster"]
@@ -65,25 +65,27 @@ class CryosparcWrapper(StateObj):
         movie_info = em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
-        path_to_movies_relative : pathlib.Path = self.exp_engine.resolve_target_location(self.exp_engine.get_tag_target_dir("movie", "raw"))
-        processing_source_path = self._get_processing_source_path()
+        path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir("movie", "raw")
         workflow["exposure"] = {
-            "file_engine_watch_path_abs" : str(processing_source_path / path_to_movies_relative),
+            "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
-            "gainref_path" : str(processing_source_path / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
+            "gainref_path" : str(self.raw_data_dir / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
         }
 
         # Use metadata to compute dose per stack (frame dose times number of frames)
         try:
             meta = self.exp_engine.read_metadata()
-            dose = meta["DATA_fmDose"] * meta["DATA_numFrames"]
+            dose = meta["DATA_fmDose"] * 8 # FROM METADATA * meta["DATA_numFrames"]
             workflow["mscope_params"]["total_dose_e_per_A2"] = dose
             self.exp_engine.logger.info(f"Computed dose per stack: {dose}")
         except Exception as e:
             self.exp_engine.logger.error(f"Error during dose computation: {e}")
+            raise
 
         # Invoke the cryosparc engine
-        self.exp_engine.logger.info(f"Creating cryosparc project with workflow:", json.dumps(workflow, indent=2))
+        self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
+        # Directory must exist or cryosparc fails
+        self.project_path.mkdir(parents=True, exist_ok=True)
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout.strip()
@@ -121,18 +123,18 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
         cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
 
-        
+        exp_engine.restore_metadata({ k: v for k,v,_ in exp_engine.extract_metadata() })
         def running():
             # Fetch new data from storage -> processing project
-            exp_engine.download(cw.raw_data_dir, TODO DRL, session_name="cs_processing")
+            print(cw.raw_data_dir)
 
+            raw_data_rules = exp_engine.data_rules.with_tags("raw")
+            dw_result = exp_engine.download(cw.raw_data_dir, raw_data_rules, session_name="cs_processing")
+            print(dw_result)
             # Return new data from processing project -> storage
-            exp_engine.upload(cw.project_path)
+            # exp_engine.upload(cw.project_path)
 
             # Check changes, kill the process?
-            path_to_movies_relative : pathlib.Path = exp_engine.e_config.data_rules.with_tags("movie", "raw").data_rules[0].target
-            processing_source_path = cw._get_processing_source_path()
-            print("srcp", path_to_movies_relative, processing_source_path)
         exec_state(cw,
             {
                 experiment.ProcessingState.UNINITIALIZED: cw.create_project,

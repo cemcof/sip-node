@@ -440,7 +440,6 @@ class ExperimentStorageEngine:
         raise NotImplementedError()
 
     def download(self, target: pathlib.Path, data_rules: DataRulesWrapper=None, session_name="download"):
-        data_rules = data_rules or self.data_rules
         """ Download file or directory from the storage to local target directory """
         raise NotImplementedError()
     
