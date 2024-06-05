@@ -1,12 +1,14 @@
 
+import datetime
 import logging
 import os, sys, re, json, pathlib
 from io import TextIOWrapper
 import subprocess
 from common import StateObj, exec_state
 import processing_tools
+import data_tools
 import fs_storage_engine
-import experiment
+import experiment, common
 
 class CryosparcWrapper(StateObj):
     """ Connects LIMS experiments and their processing with the cryosparc engine"""
@@ -75,7 +77,7 @@ class CryosparcWrapper(StateObj):
         # Use metadata to compute dose per stack (frame dose times number of frames)
         try:
             meta = self.exp_engine.read_metadata()
-            dose = meta["DATA_fmDose"] * 8 # FROM METADATA * meta["DATA_numFrames"]
+            dose = meta["DATA_fmDose"] * 8 # FROM METADATA * meta["DATA_imageSizeZ"]
             workflow["mscope_params"]["total_dose_e_per_A2"] = dose
             self.exp_engine.logger.info(f"Computed dose per stack: {dose}")
         except Exception as e:
@@ -102,6 +104,17 @@ class CryosparcWrapper(StateObj):
         self._invoke_cryosparc_cli("run", args, stdin="")
         self.exp_engine.logger.info(f"Started cryosparc project {project_id} and session {session_id}")
         self.exp.processing.state = experiment.ProcessingState.RUNNING
+
+    def stop_project(self): 
+        project_id, session_id = self.exp.processing.pid.split("/")
+        args = {
+            "--pid": project_id,
+            "--sid": session_id
+        }
+
+        self._invoke_cryosparc_cli("stop", args, stdin="")
+        self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
+        self.exp.processing.state = experiment.ProcessingState.FINALIZING
     
     def get_state(self):
         return self.exp.processing.state
@@ -123,23 +136,59 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
         cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
 
-        exp_engine.restore_metadata({ k: v for k,v,_ in exp_engine.extract_metadata() })
+        def _upload_helper():
+            # Upload data and get relevant scanned changes
+            dr = data_tools.DataRuleWrapper('**/*.*', "processed", target=cw.project_path.name, keep_tree=True)
+            up_result = exp_engine.upload(cw.project_path, data_tools.DataRulesWrapper([dr]), session_name="cs_processing_upload")
+            up_result = [f for f in up_result if not f[0].endswith(".log")]
+            return up_result
+
         def running():
             # Fetch new data from storage -> processing project
-            print(cw.raw_data_dir)
+            # raw_data_rules = exp_engine.data_rules.with_tags("raw")
+            dr = data_tools.DataRuleWrapper('Raw/**/*.*', "raw", keep_tree=True)
+            dw_result = exp_engine.download(cw.raw_data_dir, data_tools.DataRulesWrapper([dr]), session_name="cs_processing")
 
-            raw_data_rules = exp_engine.data_rules.with_tags("raw")
-            dw_result = exp_engine.download(cw.raw_data_dir, raw_data_rules, session_name="cs_processing")
-            print(dw_result)
             # Return new data from processing project -> storage
-            # exp_engine.upload(cw.project_path)
+            up_result = _upload_helper()
+            print("RUN UP", up_result)
 
-            # Check changes, kill the process?
+            # Check if the processing is done
+            # Some log files can change even though nothing reasonable is happening, ignore them
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            if up_result or not exp_engine.exp.processing.last_update:
+                # Update last processing change time 
+                exp_engine.exp.processing.last_update = now_utc
+
+            # Check if we should complete the processing
+            timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "0:10.0"))
+            change_delta = now_utc - exp_engine.exp.processing.last_update
+            is_still_active = exp_engine.exp.state != experiment.JobState.ACTIVE
+            print("RUN Check", str(now_utc), timeout_delta, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
+            if not is_still_active and timeout_delta < change_delta:
+                # Last change is older than configured timeout - finish
+                exp_engine.exp.processing.state = experiment.ProcessingState.STOP_REQUESTED
+
+        def finalizing():
+            up_result = _upload_helper()
+            print("FIn UP", up_result)
+            if up_result or not exp_engine.exp.processing.last_update:
+                # Update last processing change time 
+                exp_engine.exp.processing.last_update = now_utc
+            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "0:10.0"))
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            change_delta = now_utc - exp_engine.exp.processing.last_update
+            print("FIN Check", str(now_utc), timeout_delta, change_delta.seconds,  exp_engine.exp.processing.last_update)
+            if timeout_delta < change_delta:
+                exp_engine.exp.processing.state = experiment.ProcessingState.COMPLETED
+
         exec_state(cw,
             {
                 experiment.ProcessingState.UNINITIALIZED: cw.create_project,
                 experiment.ProcessingState.READY: cw.run_project,
-                experiment.ProcessingState.RUNNING: running, # TODO - feedback?
+                experiment.ProcessingState.RUNNING: running,
+                experiment.ProcessingState.STOP_REQUESTED: cw.stop_project,
+                experiment.ProcessingState.FINALIZING: finalizing,
                 experiment.ProcessingState.COMPLETED: lambda: None,
                 experiment.ProcessingState.DISABLED: lambda: None,
             }

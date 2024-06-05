@@ -19,7 +19,21 @@ def sizeof_fmt(num, suffix="B"):
 
 # Because default datetime.fromisoformat is limited and cannot handle timezone postfix
 def parse_iso_date(date_str: str):
-    return datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+    is_frac = "." in date_str
+    pattern = "%Y-%m-%dT%H:%M:%S.%fZ" if is_frac else "%Y-%m-%dT%H:%M:%SZ"  
+    dt = datetime.datetime.strptime(date_str, pattern).replace(tzinfo=datetime.timezone.utc)
+    return dt
+
+def parse_date(date_str: str):
+    """ Parse string representation of the date, return None on default values (start of epoch, -infinity etc.) """
+    dt = parse_iso_date(date_str)
+    if dt.year == 1 or dt.year == 0:
+        return None
+    return dt
+    
+def stringify_date(dt: datetime.datetime):
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
 
 def parse_timedelta(timedelta: str):
     # TODO - fix - incorrect regex

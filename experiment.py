@@ -28,6 +28,8 @@ class ProcessingState(enum.Enum):
     UNINITIALIZED = "Uninitialized"
     READY = "Ready"
     RUNNING = "Running"
+    STOP_REQUESTED = "StopRequested"
+    FINALIZING = "Finalizing"
     COMPLETED = "Completed"
     DISABLED = "Disabled"
 
@@ -122,6 +124,15 @@ class ExperimentProcessingWrapper:
             self.exp_api.patch_experiment({"Processing": {"State": value.value}})
             self.processing_data["State"] = value
 
+    @property
+    def last_update(self):
+        return common.parse_date(self.processing_data["DtLastUpdate"])
+
+    @last_update.setter
+    def last_update(self, value: datetime.datetime):
+        strd = common.stringify_date(value)
+        self.exp_api.patch_experiment({"Processing": {"DtLastUpdate": strd}})
+        self.processing_data["DtLastUpdate"] = strd
     
     @property
     def node_name(self):
@@ -261,7 +272,7 @@ class ExperimentWrapper:
     
     @property
     def dt_created(self):
-        return common.parse_iso_date(self._data["DtCreated"]) 
+        return common.parse_date(self._data["DtCreated"]) 
 
     @property
     def id(self):
@@ -439,11 +450,11 @@ class ExperimentStorageEngine:
         """ Get file from storage to file system """
         raise NotImplementedError()
 
-    def download(self, target: pathlib.Path, data_rules: DataRulesWrapper=None, session_name="download"):
+    def download(self, target: pathlib.Path, data_rules: DataRulesWrapper=None, session_name=None):
         """ Download file or directory from the storage to local target directory """
         raise NotImplementedError()
     
-    def upload(self, source: pathlib.Path, rules: DataRulesWrapper, session_name="upload", keep_source_files=True):
+    def upload(self, source: pathlib.Path, rules: DataRulesWrapper, session_name=None, keep_source_files=True):
         raise NotImplementedError()
     
     def purge(self):

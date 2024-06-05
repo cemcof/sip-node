@@ -12,9 +12,9 @@ import yaml
 import common
 
 class DataRuleWrapper:
-    def __init__(self, patterns: typing.List[str], tags: typing.List[str], target: str = None, keep_tree: bool = False, skip_if_exists=False) -> None:
-        self.patterns = patterns
-        self.tags = tags
+    def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, skip_if_exists=False) -> None:
+        self.patterns = patterns if isinstance(patterns, list) else [patterns]
+        self.tags = tags if isinstance(tags, list) else [tags]
         self.target = pathlib.Path(target) if target else None
         self.keep_tree = keep_tree
         self.skip_if_exists = skip_if_exists
@@ -95,7 +95,10 @@ class DataRulesSniffer:
                         # Consumation failed - TODO - implement some error handling strategy
                         print(f"Consumation of {f} failed", file=sys.stderr)
                         pass
-        metafile_append.close()
+
+        if metafile_append:
+            metafile_append.close()
+            
         # Return list of tuples of consumed files (only new ones in this sniff run) and their consumation times, sorted by the time
         filtered_new = filter(lambda x: x[1] > consumation_start, meta.items())
         return sorted(filtered_new, key=lambda x: x[1])
