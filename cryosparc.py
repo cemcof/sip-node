@@ -127,7 +127,8 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
             processing_state=[
                 experiment.ProcessingState.UNINITIALIZED, 
                        experiment.ProcessingState.READY, 
-                       experiment.ProcessingState.RUNNING]
+                       experiment.ProcessingState.RUNNING,
+                       experiment.ProcessingState.FINALIZING]
             )
         
         return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
@@ -140,7 +141,7 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
             # Upload data and get relevant scanned changes
             dr = data_tools.DataRuleWrapper('**/*.*', "processed", target=cw.project_path.name, keep_tree=True)
             up_result = exp_engine.upload(cw.project_path, data_tools.DataRulesWrapper([dr]), session_name="cs_processing_upload")
-            up_result = [f for f in up_result if not f[0].endswith(".log")]
+            up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
 
         def running():
@@ -161,24 +162,25 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
                 exp_engine.exp.processing.last_update = now_utc
 
             # Check if we should complete the processing
-            timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "0:10.0"))
+            timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
             change_delta = now_utc - exp_engine.exp.processing.last_update
-            is_still_active = exp_engine.exp.state != experiment.JobState.ACTIVE
-            print("RUN Check", str(now_utc), timeout_delta, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
+            is_still_active = exp_engine.exp.state == experiment.JobState.ACTIVE
+            print("RUN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
             if not is_still_active and timeout_delta < change_delta:
                 # Last change is older than configured timeout - finish
+                exp_engine.exp.processing.last_update = now_utc
                 exp_engine.exp.processing.state = experiment.ProcessingState.STOP_REQUESTED
 
         def finalizing():
             up_result = _upload_helper()
             print("FIn UP", up_result)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
             if up_result or not exp_engine.exp.processing.last_update:
                 # Update last processing change time 
                 exp_engine.exp.processing.last_update = now_utc
-            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "0:10.0"))
-            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "00:10:00.0"))
             change_delta = now_utc - exp_engine.exp.processing.last_update
-            print("FIN Check", str(now_utc), timeout_delta, change_delta.seconds,  exp_engine.exp.processing.last_update)
+            print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
             if timeout_delta < change_delta:
                 exp_engine.exp.processing.state = experiment.ProcessingState.COMPLETED
 
