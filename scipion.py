@@ -306,10 +306,14 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
 class ScipionProcessingHandler(experiment.ExperimentModuleBase):
 
     def provide_experiments(self):
-        active_experiments = super().provide_experiments()
-        # TODO - filter by state
-        # TODO - filter by instrument/technique? (splitting jobs between the nodes)
-        return filter(lambda e: e.processing.engine == "scipion" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), active_experiments)
+        exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+            processing_state=[
+                experiment.ProcessingState.UNINITIALIZED, 
+                       experiment.ProcessingState.READY, 
+                       experiment.ProcessingState.RUNNING]
+            )
+        
+        return filter(lambda e: e.processing.engine == "scipion" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         exp = exp_engine.exp

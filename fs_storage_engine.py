@@ -112,8 +112,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source))
                 absolute_target = self.resolve_target_location(relative_target)
                 # Skip if target is same as the source 
-                print("DW", absolute_target, source_path)
-                if absolute_target == source_path:
+                print("SKIPCHECK", absolute_target, source_path)
+                if absolute_target is not None and absolute_target == source_path:
                     return
                 tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
                 if log:
@@ -136,7 +136,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             absolute_target = target / relative_target
             # Skip if target is same as the source 
             print("DW", absolute_target, source_path)
-            if absolute_target == source_path:
+            if absolute_target is not None and absolute_target == source_path:
                 return
             absolute_target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, absolute_target)

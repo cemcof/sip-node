@@ -130,7 +130,7 @@ class IrodsCollectionWrapper:
 
         for met_name, met_value in metadata.items():
             if met_value:
-                imeta = iRODSMeta(met_name, met_value, '')
+                imeta = iRODSMeta(met_name, str(met_value), '')
                 col.metadata[imeta.name] = imeta
                 
         self.logger.info(f"Attached metadata to collection: {str(self.collection_path)}")         
@@ -159,6 +159,8 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             irods_session=iRODSSession(**self.connection_config), 
             collection_path=self.collection_base / self.exp.secondary_id, # TODO - internal path to exp structure?
             logger=self.logger)
+        
+        print(self.connection_config)
         
         self.fs_underlying_storage = None
         if self.mount_point:
@@ -235,6 +237,11 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         if (self.fs_underlying_storage):
             return self.fs_underlying_storage.glob(patterns)
         return self.irods_collection.glob(patterns)
+    
+
+    def upload(self, source: pathlib.Path, rules: data_tools.DataRulesWrapper, session_name=None, keep_source_files=True):
+        
+        return super().upload(source, rules, session_name, keep_source_files)
 
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
