@@ -239,11 +239,6 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         return self.irods_collection.glob(patterns)
     
 
-    def upload(self, source: pathlib.Path, rules: data_tools.DataRulesWrapper, session_name=None, keep_source_files=True):
-        
-        return super().upload(source, rules, session_name, keep_source_files)
-
-
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)
     if not conf:

@@ -468,6 +468,43 @@ class ExperimentStorageEngine:
         raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRuleWrapper(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
         self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
 
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, keep_source_files=True, log=True):
+        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
+            try:
+                relative_target = data_rule.translate_to_target(source_path.relative_to(source))
+                absolute_target = self.resolve_target_location(relative_target)
+                # Skip if target is same as the source 
+                print("UP SKIPCHECK", source_path, absolute_target)
+                if absolute_target is not None and absolute_target == source_path:
+                    return
+                tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                if log:
+                    self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
+                if not keep_source_files:
+                    source_path.unlink()
+            except:
+                self.logger.error(f"Failed to transfer {source_path} to {relative_target}")
+                raise
+
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        sniffer = DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
+        return sniffer.sniff_and_consume()
+    
+    def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
+        data_rules = data_rules or self.data_rules
+        def download_consumer(source_path_relative: pathlib.Path, data_rule: DataRuleWrapper):
+            absolute_target = target / data_rule.translate_to_target(source_path_relative)
+            absolute_source = self.resolve_target_location(source_path_relative)
+            # Skip if target is same as the source 
+            print("DW SKIPCHECK", absolute_source, absolute_target)
+            if absolute_source is not None and absolute_target == absolute_source:
+                return
+            absolute_target.parent.mkdir(parents=True, exist_ok=True)
+            self.get_file(source_path_relative, absolute_target)
+
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        sniffer = DataRulesSniffer(self.glob, data_rules, download_consumer, tmp_file)
+        return sniffer.sniff_and_consume()
     
 
     def sniff_and_process_metafile(self, source_path):

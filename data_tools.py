@@ -10,6 +10,7 @@ import typing
 
 import yaml
 import common
+import functools
 
 class DataRuleWrapper:
     def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, skip_if_exists=False) -> None:
@@ -37,7 +38,7 @@ class DataRulesWrapper:
         # Data_rules arg is a list that can contain both dicts or datarulewrapper objects
         # Create self.data_rules where all items are DataRuleWrapper objects
         self.data_rules : typing.List[DataRuleWrapper] = []
-        for dr in data_rules:
+        for dr in data_rules: 
             if isinstance(dr, DataRuleWrapper):
                 self.data_rules.append(dr)
             else:
@@ -51,13 +52,16 @@ class DataRulesWrapper:
         return iter(self.data_rules)
 
 class DataRulesSniffer:
-    def __init__(self, path: pathlib.Path, data_rules: DataRulesWrapper, consumer, metafile: pathlib.Path = None, min_nochange_sec=10, reconsume_on_change=True) -> None:
-        self.path = path
+    def __init__(self, globber: typing.Union[pathlib.Path, typing.Callable], data_rules: DataRulesWrapper, consumer, metafile: pathlib.Path = None, min_nochange_sec=10, reconsume_on_change=True) -> None:
         self.data_rules = data_rules
         self.consumer = consumer
         self.metafile = metafile
         self.min_nochange_sec = min_nochange_sec
         self.reconsume_on_change = reconsume_on_change
+
+        self.globber = globber
+        if isinstance(globber, pathlib.Path):
+            self.globber = functools.partial(common.multiglob, globber)
 
     def _load_metafile(self):
         if self.metafile and self.metafile.exists():
@@ -74,7 +78,7 @@ class DataRulesSniffer:
         metafile_append = self.metafile.open("a") if self.metafile else None
 
         for data_rule in self.data_rules:
-            for f in common.multiglob(self.path, data_rule.patterns):
+            for f in self.globber(data_rule.patterns):
                 if self.should_exclude(f):
                     continue
                 time_change = f.stat().st_mtime
