@@ -2,12 +2,12 @@
 
 import datetime
 import logging
-import os
+import os, sys
 import pathlib
 import time
 import shutil
 import typing
-
+import traceback
 import yaml
 import common
 import functools
@@ -78,10 +78,10 @@ class DataRulesSniffer:
         metafile_append = self.metafile.open("a") if self.metafile else None
 
         for data_rule in self.data_rules:
-            for f in self.globber(data_rule.patterns):
+            for f, ts_mod, size in self.globber(data_rule.patterns):
                 if self.should_exclude(f):
                     continue
-                time_change = f.stat().st_mtime
+                time_change = ts_mod
                 consumed_time = meta.get(str(f), None)
                 now = time.time()
 
@@ -97,7 +97,8 @@ class DataRulesSniffer:
                             metafile_append.write(f"{str(f)}: {now}\n")
                     except Exception as e:
                         # Consumation failed - TODO - implement some error handling strategy
-                        print(f"Consumation of {f} failed", file=sys.stderr)
+                        traceback.print_exc()
+                        print(f"Consumation of {f} failed", e, file=sys.stderr)
                         pass
 
         if metafile_append:

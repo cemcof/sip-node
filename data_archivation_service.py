@@ -12,7 +12,8 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         # We have experiment current storage engine
         # Our task is to move data to another storage engine, if desired (configured)
         exp_target_storage_engine = self.module_config["archivation_storage"]
-        exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_engine.e_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
+        exp_config = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)
+        exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
 
         # Check that both storages are accessible
         if not exp_engine.is_accessible() or not exp_target_storage.is_accessible():
@@ -20,34 +21,17 @@ class DataArchivationService(experiment.ExperimentModuleBase):
             return
         
         # Set state that we are archiving this experiment 
-        exp_engine.exp.exp_api.patch_experiment({
-            "Storage": {
-                "State": experiment.StorageState.ARCHIVING.value
-            }
-        })
-
+        exp_engine.exp.storage.state = experiment.StorageState.ARCHIVING
 
         # Archive (=move) data
         try:
-            exp_engine.transfer_to(exp_target_storage)
-            # Glob over all files in source storage and move it one by one to target storage for now
-            # However, there sure is a better and more optimal way, for now do it through temporary file "buffer"
-            # tmpfile = tempfile.NamedTemporaryFile()
-            # tmpfilepath = pathlib.Path(tmpfile.name)
-            # for file in exp_engine.glob(["**/*"]):
-            #     exp_engine.get_file(file, tmpfilepath)
-            #     exp_target_storage.put_file(file, tmpfilepath)
-
-            # # All data is transfered - purge the source storage    
-            exp_engine.purge()
+            archive_data_rules = exp_engine.data_rules.with_tags("archive")
+            exp_engine.transfer_to(exp_target_storage, archive_data_rules, move=True, session_name=f"archivation_to_{exp_target_storage_engine.replace(' ', '_')}")
+            # exp_engine.purge()
 
         except Exception as e:
             # Return state back to archivation requested
-            exp_engine.exp.exp_api.patch_experiment({
-                "Storage": {
-                    "State": experiment.StorageState.ARCHIVATION_REQUESTED.value
-                }
-            })
+            exp_engine.exp.storage.state = experiment.StorageState.ARCHIVATION_REQUESTED
             exp_engine.logger.exception(f"Failed to archive data: {e}")
             return
         # finally:

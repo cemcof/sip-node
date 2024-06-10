@@ -113,7 +113,8 @@ def multiglob(path: pathlib.Path, patterns: list):
         patterns = [patterns]
     for p in patterns:
         for f in path.glob(p):
-            yield f
+            stat = f.stat()
+            yield f, stat.st_mtime, stat.st_size
 
 # Base url options is missing in requests library, thus this
 class BaseUrlSession(requests.Session):

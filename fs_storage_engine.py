@@ -1,3 +1,4 @@
+import datetime
 import logging
 import tempfile
 import time, os, glob
@@ -100,25 +101,13 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         target = self.resolve_target_location()
         shutil.rmtree(target)
 
+    def del_file(self, path_relative: pathlib.Path):
+        target = self.resolve_target_location(path_relative)
+        target.unlink()
+
     def glob(self, patterns):
         target = self.resolve_target_location()
-        for f in multiglob(target, patterns):
-            yield f.relative_to(target)
-    
-    def transfer_to(self, target: experiment.ExperimentStorageEngine, metafile: pathlib.Path=None, data_tags=None, move=False):
-        same_loc = self.has_same_location(target)
-        from_loc = self.resolve_target_location()
-        if same_loc: 
-             # If same location, no physical transfer must be done, however, get info about new sniffed files? 
-            return 
-        
-        def transfer(f: pathlib.Path, data_rule):
-            target.put_file(f.relative_to(from_loc), f)
-        # Prepare data rules sniffer 
-        data_rules = self.data_rules if data_tags else self.data_rules.with_tags(*data_tags)
-        sniffer = data_tools.DataRulesSniffer(from_loc, data_rules, target.put_file, metafile=metafile)
-        pass
-
+        return multiglob(target, patterns)
 
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

@@ -404,24 +404,25 @@ class ExperimentStorageEngine:
              metastr
         )
 
-    def determine_relative_target(self, source_file_relative: pathlib.Path, tag=None):
+    # TODO del?
+    # def determine_relative_target(self, source_file_relative: pathlib.Path, tag=None):
 
-        for rule in self.data_rules.with_tags(tag):
+    #     for rule in self.data_rules.with_tags(tag):
         
-            # Does the path match?
-            pattens = rule["Patterns"]
-            matched = any([fnmatch.fnmatch(str(source_file_relative), p) for p in pattens])
+    #         # Does the path match?
+    #         pattens = rule["Patterns"]
+    #         matched = any([fnmatch.fnmatch(str(source_file_relative), p) for p in pattens])
 
-            if matched:
-                target = pathlib.Path(rule["Target"])
-                keep_tree = rule["KeepTree"] if "KeepTree" in rule else False
-                if keep_tree:
-                    return target / source_file_relative
-                else:
-                    return target / source_file_relative.name
+    #         if matched:
+    #             target = pathlib.Path(rule["Target"])
+    #             keep_tree = rule["KeepTree"] if "KeepTree" in rule else False
+    #             if keep_tree:
+    #                 return target / source_file_relative
+    #             else:
+    #                 return target / source_file_relative.name
 
-        # No data rule match? Leave it as is
-        return source_file_relative
+    #     # No data rule match? Leave it as is
+    #     return source_file_relative
     
     def get_tag_target_dir(self, *tags):
         dr = self.data_rules.with_tags(*tags)
@@ -449,12 +450,9 @@ class ExperimentStorageEngine:
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         """ Get file from storage to file system """
         raise NotImplementedError()
-
-    def download(self, target: pathlib.Path, data_rules: DataRulesWrapper=None, session_name=None):
-        """ Download file or directory from the storage to local target directory """
-        raise NotImplementedError()
     
-    def upload(self, source: pathlib.Path, rules: DataRulesWrapper, session_name=None, keep_source_files=True):
+    def del_file(self, path_relative: pathlib.Path):
+        """ Delete file from storage """
         raise NotImplementedError()
     
     def purge(self):
@@ -506,6 +504,29 @@ class ExperimentStorageEngine:
         sniffer = DataRulesSniffer(self.glob, data_rules, download_consumer, tmp_file)
         return sniffer.sniff_and_consume()
     
+    def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, move=False):
+        """ Transfer data from this storage to another """
+        if data_rules is None:
+            data_rules = DataRulesWrapper([DataRuleWrapper("**/*", ["all"], keep_tree=True)])
+
+        buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.exp.secondary_id}.dat"
+
+        def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRuleWrapper):
+            source_abs_path = self.resolve_target_location(source_path_relative)
+            target_rel_path = data_rule.translate_to_target(source_path_relative)
+            if source_abs_path is None:
+                # We do not have access to the file directly in filesystem - need to use buffer file 
+                self.get_file(source_path_relative, buffer_file)
+                target.put_file(target_rel_path, buffer_file, skip_if_exists=data_rule.skip_if_exists)
+            else:
+                target.put_file(target_rel_path, source_abs_path, skip_if_exists=data_rule.skip_if_exists)
+                
+            if move:
+                self.del_file(source_path_relative)
+        
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        sniffer = DataRulesSniffer(self.glob, data_rules, transfer_consumer, tmp_file)
+        return sniffer.sniff_and_consume()
 
     def sniff_and_process_metafile(self, source_path):
         source_path = pathlib.Path(source_path)
@@ -565,9 +586,7 @@ class ExperimentStorageEngine:
 
         return metad
 
-    def transfer_to(self, target: 'ExperimentStorageEngine', *data_tags):
-        """ Transfer data from this storage to another """
-        raise NotImplementedError()
+    
 
 class ExperimentModuleBase(configuration.LimsNodeModule):
     def __init__(self, name, logger, lims_logger, config: configuration.LimsModuleConfigWrapper, api_session, exp_storage_engine_factory):

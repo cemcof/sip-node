@@ -63,7 +63,6 @@ class IrodsCollectionWrapper:
         self.irods_session.data_objects.put(str(source), str(target))
         t_done = datetime.datetime.now(datetime.timezone.utc)
         time_delta_secs = (t_done - t_start).total_seconds()
-        # self.logger.info(f"Transfered to iRODS: {str(source_relative or source_base.name)} -> {target_relative}, {size_fmt}, {time_delta_secs:.3f}s")
         return time_delta_secs, size
     
     def exists(self,relative_path: pathlib.Path):
@@ -89,6 +88,9 @@ class IrodsCollectionWrapper:
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         return self.irods_session.data_objects.get(str(self.collection_path / path_relative_src), str(path_dst), forceFlag=True)
+    
+    def unlink_file(self, path_relative: pathlib.Path):
+        self.irods_session.data_objects.unlink(str(self.collection_path / path_relative))
 
     def write_file(self, path_relative: pathlib.Path, content):
         with self.open_dataobject(path_relative, "w") as f:
@@ -107,14 +109,13 @@ class IrodsCollectionWrapper:
                 yield dobj
         
         for dataobj in walk_collection(self.collection):
-
             relative_dataobj = pathlib.Path(dataobj.path).relative_to(self.collection_path)
 
             # Does this relative path fnmatch one of given patterns?
             for pattern in patterns:
                 # print(f"matching {pattern} against {relative_dataobj} = {fnmatch.fnmatch(str(relative_dataobj), pattern)}")
                 if fnmatch.fnmatch(str(relative_dataobj), pattern):
-                    yield relative_dataobj
+                    yield relative_dataobj, dataobj.modify_time.timestamp(), dataobj.size
                     break
 
     def store_irods_metadata(self, metadata: dict, target_file: pathlib.Path=None):
@@ -159,8 +160,6 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             irods_session=iRODSSession(**self.connection_config), 
             collection_path=self.collection_base / self.exp.secondary_id, # TODO - internal path to exp structure?
             logger=self.logger)
-        
-        print(self.connection_config)
         
         self.fs_underlying_storage = None
         if self.mount_point:
@@ -230,12 +229,19 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             return self.fs_underlying_storage.file_exists(path_relative)
         return self.irods_collection.exists(path_relative)
     
+    def del_file(self, path_relative: pathlib.Path):
+        if (self.fs_underlying_storage):
+            return self.fs_underlying_storage.del_file(path_relative)
+        
+        self.irods_collection.unlink_file(path_relative)
+
     def purge(self):
         self.irods_collection.drop_collection()
     
     def glob(self, patterns):
         if (self.fs_underlying_storage):
             return self.fs_underlying_storage.glob(patterns)
+        
         return self.irods_collection.glob(patterns)
     
 
