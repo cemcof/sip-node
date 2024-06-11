@@ -140,7 +140,7 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
         def _upload_helper():
             # Upload data and get relevant scanned changes
             dr = data_tools.DataRuleWrapper('**/*.*', "processed", target=cw.project_path.name, keep_tree=True)
-            up_result = exp_engine.upload(cw.project_path, data_tools.DataRulesWrapper([dr]), session_name="cs_processing_upload")
+            up_result, errs = exp_engine.upload(cw.project_path, data_tools.DataRulesWrapper([dr]), session_name="cs_processing_upload")
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
 
@@ -148,7 +148,7 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
             # Fetch new data from storage -> processing project
             # raw_data_rules = exp_engine.data_rules.with_tags("raw")
             dr = data_tools.DataRuleWrapper('Raw/**/*.*', "raw", keep_tree=True)
-            dw_result = exp_engine.download(cw.raw_data_dir, data_tools.DataRulesWrapper([dr]), session_name="cs_processing")
+            dw_result, errs = exp_engine.download(cw.raw_data_dir, data_tools.DataRulesWrapper([dr]), session_name="cs_processing")
 
             # Return new data from processing project -> storage
             up_result = _upload_helper()

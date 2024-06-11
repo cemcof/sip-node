@@ -367,9 +367,12 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
                 experiment.ProcessingState.UNINITIALIZED: state_project_not_exists,
                 experiment.ProcessingState.READY: state_project_ready,
                 experiment.ProcessingState.RUNNING: state_project_running,
+                experiment.ProcessingState.STOP_REQUESTED: lambda: None,
+                experiment.ProcessingState.FINALIZING: lambda: None,
                 experiment.ProcessingState.COMPLETED: state_project_finished,
                 experiment.ProcessingState.DISABLED: lambda: None,
             }
         )
+
         
         

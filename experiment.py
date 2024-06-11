@@ -174,6 +174,19 @@ class ExperimentStorageWrapper:
     @property
     def archive(self):
         return self._exp_data["Archive"]
+    
+    @property
+    def target(self):
+        return self._exp_data["Target"]
+    
+    @property
+    def path(self):
+        return self._exp_data["Path"]
+    
+    @property
+    def token(self):
+        return self._exp_data["Token"]
+    
 
     @property
     def source_directory(self):
@@ -464,7 +477,7 @@ class ExperimentStorageEngine:
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
         raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRuleWrapper(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
-        self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
+        return self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
 
     def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, keep_source_files=True, log=True):
         def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
@@ -514,6 +527,7 @@ class ExperimentStorageEngine:
         def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRuleWrapper):
             source_abs_path = self.resolve_target_location(source_path_relative)
             target_rel_path = data_rule.translate_to_target(source_path_relative)
+            print("FWEFEWFEWF", source_path_relative, source_abs_path, target_rel_path)
             if source_abs_path is None:
                 # We do not have access to the file directly in filesystem - need to use buffer file 
                 self.get_file(source_path_relative, buffer_file)

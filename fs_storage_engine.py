@@ -107,7 +107,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
 
     def glob(self, patterns):
         target = self.resolve_target_location()
-        return multiglob(target, patterns)
+        for f, m, s in multiglob(target, patterns):
+            yield f.relative_to(target), m, s
 
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

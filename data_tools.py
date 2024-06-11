@@ -75,6 +75,7 @@ class DataRulesSniffer:
     def sniff_and_consume(self):
         consumation_start = time.time()
         meta = self._load_metafile() or {}
+        errors = []
         metafile_append = self.metafile.open("a") if self.metafile else None
 
         for data_rule in self.data_rules:
@@ -96,17 +97,16 @@ class DataRulesSniffer:
                         if metafile_append:
                             metafile_append.write(f"{str(f)}: {now}\n")
                     except Exception as e:
-                        # Consumation failed - TODO - implement some error handling strategy
+                        errors.append((f, e))
                         traceback.print_exc()
                         print(f"Consumation of {f} failed", e, file=sys.stderr)
-                        pass
 
         if metafile_append:
             metafile_append.close()
             
         # Return list of tuples of consumed files (only new ones in this sniff run) and their consumation times, sorted by the time
         filtered_new = filter(lambda x: x[1] > consumation_start, meta.items())
-        return sorted(filtered_new, key=lambda x: x[1])
+        return sorted(filtered_new, key=lambda x: x[1]), errors
 
 
 

@@ -21,10 +21,22 @@ class B2ShareDraft:
         response = self.http_session.get(self.record_url())
         response.raise_for_status()
         return response.json()
-        
+    
+    def get_draft(self):
+        response = self.http_session.get(self.draft_url())
+        response.raise_for_status()
+        resjson = response.json()
+        return resjson
+    
+    def record_page_url(self):
+        if self.draft_id:
+            return self.http_session.base_url + f"records/{self.draft_id}"
+        else:
+            raise ValueError("Draft does not exist")
+
     def record_url(self, absolute=False):
         if self.draft_id:
-            return f"records/{self.draft_id}" if not absolute else self.http_session.base_url + f"records/{self.draft_id}"
+            return f"api/records/{self.draft_id}" if not absolute else self.http_session.base_url + f"api/records/{self.draft_id}"
         else:
             raise ValueError("Draft does not exist")
         
@@ -37,17 +49,52 @@ class B2ShareDraft:
             "value":"submitted"
         }])
 
+        print(response.content)
         response.raise_for_status()
         published_draft = response.json()
         return published_draft["metadata"]["DOI"]
     
+    def update_dataset_access_info(self, path: str, target: str, token: str=None):
+        draft = self.get_draft()
+        res = { 
+            "resource_type_general": "Dataset",
+            "resource_type_description": f"path={path} ticket={token}"
+        }
+
+        # Check if dataset resource exists and find its index
+        resource_index = None
+        for i, r in enumerate(draft["metadata"].get("resource_types", [])):
+            if r["resource_type_general"] == "Dataset":
+                resource_index = i
+                break
+
+        # If resource exists, update it
+        if resource_index is not None:
+            patch_data = [{
+                "op":"replace",
+                "path": f"/resource_types/{resource_index}",
+                "value": res
+            }]
+        else:
+            # Otherwise add it
+            patch_data = [{
+                "op":"add",
+                "path": "/resource_types",
+                "value": [res]
+            }]
+
+
+        headers = {"Content-Type":"application/json-patch+json"}
+        response = self.http_session.patch(url=self.draft_url(), headers=headers, json=patch_data)
+        print(response.content, patch_data)
+        response.raise_for_status()
 
     def get_doi(self):
         record = self.get_record()
         return record["metadata"]["DOI"]
     
     def is_published(self):
-        record = self.get_record()
+        record = self.get_draft()
         return record["metadata"]["publication_state"] == "published"
     
     def prepare_draft_metadata(self, title, metadata):
@@ -72,7 +119,7 @@ class B2ShareDraft:
             metadata["open_access"] = True
 
         # No draft id - create record
-        response = self.http_session.post("records/", json=metadata)
+        response = self.http_session.post("api/records/", json=metadata)
         new_record = response.json()
         self.draft_id = new_record["id"]
     
@@ -104,7 +151,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
 
         def publish():
             exp = exp_engine.exp
-
+            print(json.dumps(exp.data_model, indent=2))
             # Experiment must first be archived 
             if not exp.storage.state == experiment.StorageState.ARCHIVED:
                 # Not error - experiment might be just waiting for the archivation to compltet
@@ -117,13 +164,20 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
                 self.logger.error("Draft must exist")
                 return
             
+            # print(json.dumps(b2_draft.get_draft(), indent=2))
+            # Before publication, attach access info to the draft
+            b2_draft.update_dataset_access_info(
+                path=exp_engine.exp.storage.path,
+                target=exp_engine.exp.storage.target,
+                token=exp_engine.exp.storage.token
+                )
+            
             # Draft publication
             doi = b2_draft.publish_draft() if not b2_draft.is_published() else b2_draft.get_doi()
-
-            # Submit publication success to LIMS
             exp.exp_api.patch_experiment({"Publication":{
+            # Submit publication success to LIMS
                 "Doi": doi,
-                "TargetUrl": b2_draft.record_url(absolute=True),
+                "TargetUrl": b2_draft.record_page_url(),
                 "State": experiment.PublicationState.PUBLISHED.value
             }})
 
