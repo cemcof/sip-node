@@ -40,6 +40,7 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         exp_engine.exp.exp_api.patch_experiment({
             "Storage": {
                 "State": experiment.StorageState.ARCHIVED.value,
+                "StorageEngine": exp_target_storage_engine,
                 **exp_target_storage.get_access_info()
             }
         })
