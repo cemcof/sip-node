@@ -8,12 +8,13 @@ from common import StateObj, exec_state
 import processing_tools
 import data_tools
 import fs_storage_engine
-import experiment, common
+import common
+from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
 
 class CryosparcWrapper(StateObj):
     """ Connects LIMS experiments and their processing with the cryosparc engine"""
     def __init__(self, 
-                 exp_engine: experiment.ExperimentStorageEngine, 
+                 exp_engine: ExperimentStorageEngine, 
                  config: dict): 
         self.exp_engine = exp_engine
         self.exp = exp_engine.exp
@@ -91,7 +92,7 @@ class CryosparcWrapper(StateObj):
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout.strip()
-        self.exp.processing.state = experiment.ProcessingState.READY        
+        self.exp.processing.state = ProcessingState.READY        
         return True
     
     def run_project(self):
@@ -103,7 +104,7 @@ class CryosparcWrapper(StateObj):
 
         self._invoke_cryosparc_cli("run", args, stdin="")
         self.exp_engine.logger.info(f"Started cryosparc project {project_id} and session {session_id}")
-        self.exp.processing.state = experiment.ProcessingState.RUNNING
+        self.exp.processing.state = ProcessingState.RUNNING
 
     def stop_project(self): 
         project_id, session_id = self.exp.processing.pid.split("/")
@@ -114,26 +115,26 @@ class CryosparcWrapper(StateObj):
 
         self._invoke_cryosparc_cli("stop", args, stdin="")
         self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
-        self.exp.processing.state = experiment.ProcessingState.FINALIZING
+        self.exp.processing.state = ProcessingState.FINALIZING
     
     def get_state(self):
         return self.exp.processing.state
 
 
-class CryosparcProcessingHandler(experiment.ExperimentModuleBase): 
+class CryosparcProcessingHandler(ExperimentModuleBase): 
 
     def provide_experiments(self):
-        exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+        exps = ExperimentsApi(self._api_session).get_experiments_by_states(
             processing_state=[
-                experiment.ProcessingState.UNINITIALIZED, 
-                       experiment.ProcessingState.READY, 
-                       experiment.ProcessingState.RUNNING,
-                       experiment.ProcessingState.FINALIZING]
+                ProcessingState.UNINITIALIZED, 
+                       ProcessingState.READY, 
+                       ProcessingState.RUNNING,
+                       ProcessingState.FINALIZING]
             )
         
         return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
-    def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
+    def step_experiment(self, exp_engine: ExperimentStorageEngine):
         cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
 
@@ -164,12 +165,12 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
             # Check if we should complete the processing
             timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
             change_delta = now_utc - exp_engine.exp.processing.last_update
-            is_still_active = exp_engine.exp.state == experiment.JobState.ACTIVE
+            is_still_active = exp_engine.exp.state == JobState.ACTIVE
             print("RUN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
             if not is_still_active and timeout_delta < change_delta:
                 # Last change is older than configured timeout - finish
                 exp_engine.exp.processing.last_update = now_utc
-                exp_engine.exp.processing.state = experiment.ProcessingState.STOP_REQUESTED
+                exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
 
         def finalizing():
             up_result = _upload_helper()
@@ -182,17 +183,17 @@ class CryosparcProcessingHandler(experiment.ExperimentModuleBase):
             change_delta = now_utc - exp_engine.exp.processing.last_update
             print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
             if timeout_delta < change_delta:
-                exp_engine.exp.processing.state = experiment.ProcessingState.COMPLETED
+                exp_engine.exp.processing.state = ProcessingState.COMPLETED
 
         exec_state(cw,
             {
-                experiment.ProcessingState.UNINITIALIZED: cw.create_project,
-                experiment.ProcessingState.READY: cw.run_project,
-                experiment.ProcessingState.RUNNING: running,
-                experiment.ProcessingState.STOP_REQUESTED: cw.stop_project,
-                experiment.ProcessingState.FINALIZING: finalizing,
-                experiment.ProcessingState.COMPLETED: lambda: None,
-                experiment.ProcessingState.DISABLED: lambda: None,
+                ProcessingState.UNINITIALIZED: cw.create_project,
+                ProcessingState.READY: cw.run_project,
+                ProcessingState.RUNNING: running,
+                ProcessingState.STOP_REQUESTED: cw.stop_project,
+                ProcessingState.FINALIZING: finalizing,
+                ProcessingState.COMPLETED: lambda: None,
+                ProcessingState.DISABLED: lambda: None,
             }
         )
         

@@ -1,12 +1,13 @@
 # =================== Tools for interaction between LIMS and scipion =====================
 
-import logging, psutil, subprocess, configparser, configuration, pathlib, json, shutil
+import logging, subprocess, pathlib, json, shutil
 import re
 from data_tools import FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher
-import experiment, processing_tools, os
+import processing_tools, os
 from common import StateObj, exec_state, multiglob
 from logger_db_api import wrap_logger_origin
-
+from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
+import tempfile
 
 class ScipionWrapper:
     """ Wrapper for scipion project 
@@ -28,8 +29,8 @@ class ScipionWrapper:
         self.scipion_workspace_directory = pathlib.Path(self._extract_scipion_config_var("SCIPION_USER_DATA") or self._DEFAULT_SCIPION_DIRECTORY).expanduser()
         self.scipion_projects_directory = self.scipion_workspace_directory / "projects"
         self.scipion_project_directory = self.scipion_projects_directory / self.project_name
-        self.project_directory = project_location or self.scipion_project_directory
-        self.wf_template_path = self.scipion_workspace_directory / f"template_{self.project_name}.json"
+        self.project_directory = project_location / project_name or self.scipion_project_directory
+        self.wf_template_path = tempfile.gettempdir() / f"template_{self.project_name}.json" # TODO maybe use tempfile
         self.logger = logger
 
         # scipion workspace directory must exists and be writable in order to run scipion
@@ -74,7 +75,7 @@ class ScipionWrapper:
         protocol_dirs = self.project_directory.glob("Runs/*")
         watchers = []
         for protdir in protocol_dirs:
-            logfiles = list(protdir.glob("logs/*.log")) + list(protdir.glob("logs/*.stderr")) + list(protdir.glob("logs/*.stdout"))  # STDOUT is just too much
+            logfiles = list(protdir.glob("logs/*.log")) + list(protdir.glob("logs/*.stderr")) + list(protdir.glob("logs/*.stdout"))
             w = [FileWatcher(l, name=protdir.name + " / " + l.name) for l in logfiles]
             watchers.extend(w)
 
@@ -100,22 +101,14 @@ class ScipionWrapper:
     
     def project_exists(self):
         return (self.project_directory).exists()
-
-    def ensure_project(self, template: list, purge_existing=False):
-        if self.project_exists() and not purge_existing:
-            self.logger.debug(f"Skipping project creation, already exists: {self.project_directory}")
-            return
-        
-        if self.project_exists() and purge_existing:
-            self.logger.debug("Project exists, lets purge it before proceeding...")
-            self.purge_project()
-        
+    
+    def create_project(self, template: list):
         # Put JSON template to a file because scipion cli requires it
         self.wf_template_path.write_text(json.dumps(template, indent=4))
-        self.logger.debug(f"Ensuring project at {self.project_directory}")
+        self.logger.debug(f"Creating project at {self.project_directory}")
 
         # Create project with this template
-        cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.create "{self.project_name}" "{self.wf_template_path}"')
+        cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.create "{self.project_name}" "{self.wf_template_path}" "{self.project_directory}"')
         self.logger.info(f"Invoking: {cmd}")
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
         self.logger.info(f"Exit {result.returncode}")
@@ -126,29 +119,40 @@ class ScipionWrapper:
             self.purge_project()
             raise RuntimeError("Error during project creation - purged")
         
-        # Move project to desired location if desired and symlink it 
-        if self.scipion_project_directory != self.project_directory:
-            
-            shutil.copytree(self.scipion_project_directory, self.project_directory)
-            shutil.rmtree(self.scipion_project_directory)
-            self.scipion_project_directory.symlink_to(self.project_directory, target_is_directory=True)
-            self.logger.debug(f"Moved project and symlinked: {self.scipion_project_directory} -> {self.project_directory}")
-
-        # Also move the template file to the project directory
+        # Move the template file to the project directory
         shutil.move(self.wf_template_path, self.project_directory / "workflow.json")
 
+        # DEL not necessary actually done by scipion project creation script
+        # Move project to desired location if desired and symlink it 
+        # if self.scipion_project_directory != self.project_directory:
+            
+        #     shutil.copytree(self.scipion_project_directory, self.project_directory)
+        #     shutil.rmtree(self.scipion_project_directory)
+        #     self.scipion_project_directory.symlink_to(self.project_directory, target_is_directory=True)
+        #     self.logger.debug(f"Moved project and symlinked: {self.scipion_project_directory} -> {self.project_directory}")
+
+
+
+    def ensure_project(self, template: list, purge_existing=False):
+        if self.project_exists() and not purge_existing:
+            self.logger.debug(f"Skipping project creation, already exists: {self.project_directory}")
+            return
+        
+        if self.project_exists() and purge_existing:
+            self.logger.debug("Project exists, lets purge it before proceeding...")
+            self.purge_project()
+
+        return self.create_project(template)
+        
+
     def purge_project(self): 
-        self.logger.info(f"Purging projects... {self.scipion_project_directory}, {self.project_directory}")
+        self.logger.info(f"Purging project... {self.scipion_project_directory}, {self.project_directory}")
         if self.scipion_project_directory.is_symlink():
             self.scipion_project_directory.unlink()
         else:
             shutil.rmtree(self.scipion_project_directory, ignore_errors=True)
 
         shutil.rmtree(self.project_directory, ignore_errors=True)
-
-    def _get_processing_source_path(self): 
-        """ Implemented by child """
-        raise NotImplementedError()
 
     def schedule(self):
         self._prepare_summary_template()
@@ -172,7 +176,6 @@ class ScipionWrapper:
             "submit_script": str(submit_script_template_file),
             "project_name": self.project_name,
             "wf_template_path": str(self.wf_template_path),
-            "source_data_root": str(self._get_processing_source_path().parent) # This leads to project collection, but we need moutpoint - the root, therefore "parent"
         }
 
         submit_cmd = submit_cmd_template % context
@@ -207,19 +210,6 @@ class ScipionWrapper:
         result = next((self.project_directory / "Runs").glob("*MonitorSummary/**/index.html"), None)
         return result
 
-    
-    # def get_summary_results_sniffer(self):
-    #     """ Get new summary result files """
-    #     if not self.summary_results_directory:
-    #         return FilesWatcher([])
-
-    #     sniffer = FilesWatcher(
-    #         [FileWatcher(self.summary_results_directory / "index.html")] +
-    #         [FileWatcher(p) for p in self.summary_results_directory.glob("*.jpg")]
-    #         )
-
-    #     return sniffer
-
     def get_summary_results_file_watcher(self):
         """ Return summary result, only if it was updated """
         index_file = self.get_summary_results_file()
@@ -229,25 +219,26 @@ class ScipionWrapper:
         return FileWatcher(index_file)
     
 
-    
-    
-
 class ScipionExpWrapper(ScipionWrapper, StateObj):
     """
     Extends ScipionWrapper with a context of LIMS experiment and it's storage
     """
-    def __init__(self, storage_engine : experiment.ExperimentStorageEngine, scipion_config: dict, logger: logging.Logger) -> None:
+    def __init__(self, storage_engine : ExperimentStorageEngine, scipion_config: dict, logger: logging.Logger) -> None:
         self.storage_engine = storage_engine
         self.exp = storage_engine.exp
-        project_name = self.exp.secondary_id
-        super().__init__(scipion_config, logger, project_name)
 
-    def _get_processing_source_path(self): 
-        if "SourceDataRoot" in self.scipion_config and self.scipion_config["SourceDataRoot"]:
-            return pathlib.Path(self.scipion_config["SourceDataRoot"]) / self.exp.secondary_id
-        else:
-            return self.storage_engine.resolve_target_location()
-        
+        project_name = f"scipion_{self.exp.secondary_id}"
+        storage_loc = storage_engine.resolve_target_location()
+        target_loc = storage_loc 
+        self.raw_data_dir = storage_loc
+
+        if not storage_loc:
+            # If we dont have storage location, we need to put the project to the configured location (and do data transfering later)
+            target_loc = pathlib.Path(scipion_config["projects_dir"])
+            self.raw_data_dir = target_loc / f"raw_scipion_{self.exp.secondary_id}"
+
+        super().__init__(scipion_config, logger, project_name, target_loc)
+
     def get_state(self):
         return self.exp.processing.state
 
@@ -260,7 +251,7 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
         protocols = json.loads(json.dumps(protocols)) # Deep copy
         movies_handler = processing_tools.EmMoviesHandler(self.storage_engine)
 
-        movie_info = movies_handler.set_importmovie_info(protocols, self._get_processing_source_path())
+        movie_info = movies_handler.set_importmovie_info(protocols, self.raw_data_dir)
         if not movie_info: # Not ready
             return None
             
@@ -303,19 +294,19 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
         return protocols
 
 
-class ScipionProcessingHandler(experiment.ExperimentModuleBase):
+class ScipionProcessingHandler(ExperimentModuleBase):
 
     def provide_experiments(self):
-        exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
+        exps = ExperimentsApi(self._api_session).get_experiments_by_states(
             processing_state=[
-                experiment.ProcessingState.UNINITIALIZED, 
-                       experiment.ProcessingState.READY, 
-                       experiment.ProcessingState.RUNNING]
+                ProcessingState.UNINITIALIZED, 
+                       ProcessingState.READY, 
+                       ProcessingState.RUNNING]
             )
         
         return filter(lambda e: e.processing.engine == "scipion" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
-    def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
+    def step_experiment(self, exp_engine: ExperimentStorageEngine):
         exp = exp_engine.exp
         # Check if process is active, if not, run it
         # self.logger.debug("Stepping scipion processing...")
@@ -330,15 +321,18 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
             workflow = sciw.prepare_protocol_data(exp.processing.workflow)
             if workflow: # If we get workflow, project is ready to be created and scheduled
                 sciw.ensure_project(workflow, purge_existing=True)
-                exp.processing.state = experiment.ProcessingState.READY
+                exp.processing.state = ProcessingState.READY
 
         def state_project_ready():
             pid = sciw.schedule()
             if pid:
                 exp.processing.pid = str(pid)
-                exp.processing.state = experiment.ProcessingState.RUNNING
+                exp.processing.state = ProcessingState.RUNNING
 
         def state_project_running():
+            # HERE - do download / upload, use the results 
+            
+
             # Sniff for new logs and send them to the LIMS
             new_data = []
             def log_consumer(watcher: FileWatcher, data: str):
@@ -364,13 +358,13 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
             
         exec_state(sciw,
             {
-                experiment.ProcessingState.UNINITIALIZED: state_project_not_exists,
-                experiment.ProcessingState.READY: state_project_ready,
-                experiment.ProcessingState.RUNNING: state_project_running,
-                experiment.ProcessingState.STOP_REQUESTED: lambda: None,
-                experiment.ProcessingState.FINALIZING: lambda: None,
-                experiment.ProcessingState.COMPLETED: state_project_finished,
-                experiment.ProcessingState.DISABLED: lambda: None,
+                ProcessingState.UNINITIALIZED: state_project_not_exists,
+                ProcessingState.READY: state_project_ready,
+                ProcessingState.RUNNING: state_project_running,
+                ProcessingState.STOP_REQUESTED: lambda: None,
+                ProcessingState.FINALIZING: lambda: None,
+                ProcessingState.COMPLETED: state_project_finished,
+                ProcessingState.DISABLED: lambda: None,
             }
         )
 
