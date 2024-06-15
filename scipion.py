@@ -22,7 +22,7 @@ class ScipionWrapper:
         self.scipion_config = scipion_config
         self.project_name = project_name
         # Determine scipion home directory (where it is installed)
-        self.scipion_home = pathlib.Path(scipion_config.get("ScipionHome", False) or os.environ["SCIPION_HOME"])
+        self.scipion_home = pathlib.Path(scipion_config.get("scipion_home", False) or os.environ["SCIPION_HOME"])
         self.scipion_exec = self.scipion_home / "scipion3"
 
         # Last thing to determine is ScipionUserData (working directory)
@@ -58,11 +58,11 @@ class ScipionWrapper:
                     return match.group(1).strip(" '\"")
                 
         # 3) Try environment variable
-        return { **os.environ, **self.scipion_config.get("Env", {}) }.get(key, None)
+        return { **os.environ, **self.scipion_config.get("env", {}) }.get(key, None)
 
     def _prepare_summary_template(self):
         # If we have a template, move it to correct destination so ProtocolMonitorSummary consumes it https://github.com/scipion-em/scipion-em-facilities/blob/devel/emfacilities/protocols/report_html.py
-        summary_templ = self.scipion_config.get("SummaryTemplate", None)
+        summary_templ = self.scipion_config.get("summary_template", None)
         if summary_templ: 
             target_file = self._get_scipion_config_dir() / "execution.summary.html"
             try:
@@ -85,7 +85,7 @@ class ScipionWrapper:
     def prepare_scipion_command(self, append=""):
         command = str(self.scipion_exec) + " " + append
         # Prepare environment - merge current env with configured one
-        env = self.scipion_config.get("Env", {}).copy()
+        env = self.scipion_config.get("env", {}).copy()
         # Some of the env values can be variables, use python str % to replace them
         for k, v in env.items():
             env[k] = str(v) % env
@@ -226,6 +226,7 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
     def __init__(self, storage_engine : ExperimentStorageEngine, scipion_config: dict, logger: logging.Logger) -> None:
         self.storage_engine = storage_engine
         self.exp = storage_engine.exp
+
 
         project_name = f"scipion_{self.exp.secondary_id}"
         storage_loc = storage_engine.resolve_target_location()
