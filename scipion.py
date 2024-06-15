@@ -325,6 +325,9 @@ class ScipionProcessingHandler(experiment.ExperimentModuleBase):
         # # sciw.ensure_project(workflow, purge_existing=True)
         # return
 
+        print("HANDLE")
+        return
+
         # Define what will periodically happend to the project in each of the states
         def state_project_not_exists():
             workflow = sciw.prepare_protocol_data(exp.processing.workflow)

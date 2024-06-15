@@ -49,7 +49,7 @@ class B2ShareDraft:
             "value":"submitted"
         }])
 
-        print(response.content)
+        # print(response.content)
         response.raise_for_status()
         published_draft = response.json()
         return published_draft["metadata"]["DOI"]
@@ -151,7 +151,6 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
 
         def publish():
             exp = exp_engine.exp
-            print(json.dumps(exp.data_model, indent=2))
             # Experiment must first be archived 
             if not exp.storage.state == experiment.StorageState.ARCHIVED:
                 # Not error - experiment might be just waiting for the archivation to compltet
