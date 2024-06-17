@@ -96,6 +96,7 @@ class DataRulesSniffer:
                         meta[str(f)] = now
                         if metafile_append:
                             metafile_append.write(f"{str(f)}: {now}\n")
+                            metafile_append.flush()
                     except Exception as e:
                         errors.append((f, e))
                         traceback.print_exc()
