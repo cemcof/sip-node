@@ -1,13 +1,15 @@
 # =================== Tools for interaction between LIMS and scipion =====================
 
+import datetime
 import logging, subprocess, pathlib, json, shutil
 import re
-from data_tools import FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher
+from data_tools import DataRuleWrapper, FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher, DataRulesWrapper
 import processing_tools, os
 from common import StateObj, exec_state, multiglob
 from logger_db_api import wrap_logger_origin
 from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
 import tempfile
+import common
 
 class ScipionWrapper:
     """ Wrapper for scipion project 
@@ -30,7 +32,7 @@ class ScipionWrapper:
         self.scipion_projects_directory = self.scipion_workspace_directory / "projects"
         self.scipion_project_directory = self.scipion_projects_directory / self.project_name
         self.project_directory = project_location / project_name or self.scipion_project_directory
-        self.wf_template_path = tempfile.gettempdir() / f"template_{self.project_name}.json" # TODO maybe use tempfile
+        self.wf_template_path = pathlib.Path(tempfile.gettempdir()) / f"template_{self.project_name}.json" # TODO maybe use tempfile
         self.logger = logger
 
         # scipion workspace directory must exists and be writable in order to run scipion
@@ -108,7 +110,7 @@ class ScipionWrapper:
         self.logger.debug(f"Creating project at {self.project_directory}")
 
         # Create project with this template
-        cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.create "{self.project_name}" "{self.wf_template_path}" "{self.project_directory}"')
+        cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.create "{self.project_name}" "{self.wf_template_path}" "{self.project_directory.parent}"')
         self.logger.info(f"Invoking: {cmd}")
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
         self.logger.info(f"Exit {result.returncode}")
@@ -197,9 +199,17 @@ class ScipionWrapper:
         # self.logger.debug(f"Stderr {result.stderr.strip()}")
 
         # We need to fire and forget the process using Popen, because otherwise it will block the thread
-        proc = subprocess.Popen(cmd, shell=True, env=env)
+        proc = subprocess.Popen(cmd, shell=True, env=env, start_new_session=True)
         self.logger.info(f"Running scipion scheduler on the project, pid is {proc.pid}")
         return proc.pid
+    
+    def _stop_command(self):
+        cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.stop "{self.project_name}"')
+        self.logger.info(f"Invoking: {cmd}")
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
+        self.logger.info(f"Exit {result.returncode}")
+        self.logger.info(f"Stdout {result.stdout.strip()}")
+        self.logger.info(f"Stderr {result.stderr.strip()}")
 
     @property
     def summary_results_directory(self):
@@ -213,7 +223,6 @@ class ScipionWrapper:
     def get_summary_results_file_watcher(self):
         """ Return summary result, only if it was updated """
         index_file = self.get_summary_results_file()
-        print(index_file)
         if not index_file:
             return None
         return FileWatcher(index_file)
@@ -302,23 +311,22 @@ class ScipionProcessingHandler(ExperimentModuleBase):
             processing_state=[
                 ProcessingState.UNINITIALIZED, 
                        ProcessingState.READY, 
-                       ProcessingState.RUNNING]
+                       ProcessingState.RUNNING,
+                       ProcessingState.FINALIZING]
             )
         
+
         return filter(lambda e: e.processing.engine == "scipion" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         exp = exp_engine.exp
-        # Check if process is active, if not, run it
-        # self.logger.debug("Stepping scipion processing...")
-        sciw = ScipionExpWrapper(exp_engine, self.module_config["ScipionConfig"], wrap_logger_origin(exp_engine.logger, "scipion"))
-        # workflow = sciw.prepare_protocol_data(exp.processing.workflow)
-        # print(workflow)
-        # # sciw.ensure_project(workflow, purge_existing=True)
-        # return
+        cconf = self.module_config["ScipionConfig"]
+        sciw = ScipionExpWrapper(exp_engine, cconf, wrap_logger_origin(exp_engine.logger, "scipion"))
 
-        print("HANDLE")
-        return
+        def _filter_relevant_upload_results(up_result: list):
+            # TODO - test
+            up_result = [f for f in up_result if not (".log" in f[0] or ".stdin" in f[0] or ".stdout" in f[0] or ".stderr" in f[0])]
+            return up_result
 
         # Define what will periodically happend to the project in each of the states
         def state_project_not_exists():
@@ -333,11 +341,16 @@ class ScipionProcessingHandler(ExperimentModuleBase):
                 exp.processing.pid = str(pid)
                 exp.processing.state = ProcessingState.RUNNING
 
+        
         def state_project_running():
-            # HERE - do download / upload, use the results 
-            
+            # Download new raw data to the processing source directory
+            dw_result, errs = exp_engine.download_raw(sciw.raw_data_dir)
 
-            # Sniff for new logs and send them to the LIMS
+            # Return new data from processing project to storage
+            up_result, errs = exp_engine.upload_processed(sciw.project_directory, sciw.project_directory.name)
+            print("RUN UP", up_result)
+
+            # Sniff for new logs and send them to the LIMS as documents to the report
             new_data = []
             def log_consumer(watcher: FileWatcher, data: str):
                 new_data.append((watcher.name, data, "text/plain"))    
@@ -350,27 +363,54 @@ class ScipionProcessingHandler(ExperimentModuleBase):
                 with result_sniffer.file_path.open("rb") as stream:
                     exp.exp_api.upload_document_files(exp.processing.result_document_id, ("Scipion results", stream, "text/html"))
                     result_sniffer.mark_processed()
-  
-            # Sniff for processing result files and submit them ba0ck to the storage
-            # But dont use experiment logger
-            exp_engine.sniff_and_transfer(sciw.project_directory, exp_engine.data_rules.with_tags("processed"), keep_source_files=True, logger=logging.getLogger("ProcessingTransfer"))
 
-        def state_project_finished():
-            # sciw.logger.info("Scipion project finished")
-            # state_project_running()
-            pass
+
+            # Check if the processing is done
+            # Some log files can change even though nothing reasonable is happening, ignore them
+            up_result = _filter_relevant_upload_results(up_result)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            if up_result or not exp_engine.exp.processing.last_update:
+                # Update last processing change time 
+                exp_engine.exp.processing.last_update = now_utc
+
+            # Check if we should complete the processing
+            timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
+            change_delta = now_utc - exp_engine.exp.processing.last_update
+            is_still_active = exp_engine.exp.state == JobState.ACTIVE
+            print("RUN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
+            if not is_still_active and timeout_delta < change_delta:
+                # Last change is older than configured timeout - finish
+                exp_engine.exp.processing.last_update = now_utc
+                exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
+
+        def state_stop_requested():
+            sciw._stop_command() # TODO 
+            exp.processing.state = ProcessingState.FINALIZING
+
+        def state_project_finalizing():
+            up_result, errs = exp_engine.upload_processed(sciw.project_directory, sciw.project_directory.name)
+            up_result = _filter_relevant_upload_results(up_result)
+            print("FIn UP", up_result)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            if up_result or not exp_engine.exp.processing.last_update:
+                # Update last processing change time 
+                exp_engine.exp.processing.last_update = now_utc
+            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "00:10:00.0"))
+            change_delta = now_utc - exp_engine.exp.processing.last_update
+            print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
+            if timeout_delta < change_delta:
+                exp_engine.exp.processing.state = ProcessingState.COMPLETED
+  
+
             
         exec_state(sciw,
             {
                 ProcessingState.UNINITIALIZED: state_project_not_exists,
                 ProcessingState.READY: state_project_ready,
                 ProcessingState.RUNNING: state_project_running,
-                ProcessingState.STOP_REQUESTED: lambda: None,
-                ProcessingState.FINALIZING: lambda: None,
-                ProcessingState.COMPLETED: state_project_finished,
+                ProcessingState.STOP_REQUESTED: state_stop_requested,
+                ProcessingState.FINALIZING: state_project_finalizing,
+                ProcessingState.COMPLETED: lambda: None,
                 ProcessingState.DISABLED: lambda: None,
             }
         )
-
-        
-        

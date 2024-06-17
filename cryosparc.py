@@ -138,22 +138,19 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         cconf = self.module_config["cryosparc_config"]
         cw = CryosparcWrapper(exp_engine, cconf)
 
-        def _upload_helper():
-            # Upload data and get relevant scanned changes
-            dr = data_tools.DataRuleWrapper('**/*.*', "processed", target=cw.project_path.name, keep_tree=True)
-            up_result, errs = exp_engine.upload(cw.project_path, data_tools.DataRulesWrapper([dr]), session_name="cs_processing_upload")
+        def _filter_relevant_upload_results(up_result: list):
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
 
         def running():
             # Fetch new data from storage -> processing project
-            # raw_data_rules = exp_engine.data_rules.with_tags("raw")
-            dr = data_tools.DataRuleWrapper('Raw/**/*.*', "raw", keep_tree=True)
-            dw_result, errs = exp_engine.download(cw.raw_data_dir, data_tools.DataRulesWrapper([dr]), session_name="cs_processing")
+            dw_result, errs = exp_engine.download_raw(cw.raw_data_dir)
 
             # Return new data from processing project -> storage
-            up_result = _upload_helper()
+            up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
             print("RUN UP", up_result)
+
+            up_result = _filter_relevant_upload_results(up_result)
 
             # Check if the processing is done
             # Some log files can change even though nothing reasonable is happening, ignore them
@@ -173,7 +170,8 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
                 exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
 
         def finalizing():
-            up_result = _upload_helper()
+            up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
+            up_result = _filter_relevant_upload_results(up_result)
             print("FIn UP", up_result)
             now_utc = datetime.datetime.now(datetime.timezone.utc)
             if up_result or not exp_engine.exp.processing.last_update:

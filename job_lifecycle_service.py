@@ -10,14 +10,16 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
                        experiment.JobState.STOP_REQUESTED]
             )
 
-
-        # Select only experiments according to configuration
-        types = self.module_config["ExperimentTypes"]
-        return filter(lambda e: e.exp_type_matches(types), exps)
+        return exps
 
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
 
+        types = self.module_config["experiment_types"]
+        exp_filter = next(filter(lambda x: exp_engine.exp.exp_type_matches(x["pattern"]), types), None)
+        if not exp_filter: # This experiment should not be handled by this node
+            return
+        
         # def resolve_source_dir(self):
         #     src_dir_original_path = self.exp.storage.source_directory
         #     src_dir_path = self.config.lims_config.translate_path(src_dir_original_path, self.exp.secondary_id) or src_dir_original_path
@@ -41,15 +43,21 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
             if exp_engine.exp.publication.engine and exp_engine.exp.storage.archive:
                 patch["Publication"] = {"State": experiment.PublicationState.DRAFT_CREATION_REQUESTED.value}
 
+            # Set processing node, if necessary 
+            proc = exp_engine.exp.processing
+            if proc.state != experiment.ProcessingState.DISABLED and (not proc.node_name or proc.node_name == "any"):
+                # Do we have the rule? 
+                rules = exp_filter.get("assign_processing", None)
+                if rules and proc.engine in rules:
+                    patch["Processing"] = {"Node": rules[proc.engine]}
+
             exp_engine.exp.exp_api.patch_experiment(patch)
             exp_running()
 
         def exp_running():
             exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.storage.source_directory, exp_engine.exp.secondary_id)
-            print(exp_data_source)
             exp_engine.sniff_and_process_metafile(exp_data_source)
             exp_engine.upload_raw(exp_data_source)
-
 
         def exp_finish():
             # Called once when experiment is finishing, send email

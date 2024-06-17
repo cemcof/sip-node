@@ -138,6 +138,13 @@ class ExperimentProcessingWrapper:
     def node_name(self):
         return self.processing_data["Node"]
     
+    @node_name.setter
+    def node_name(self, value: str):
+        if (value != self.node_name):
+            self.exp_api.patch_experiment({"Processing": {"Node": value}})
+            self.processing_data["Node"] = value
+
+    
     @property
     def workflow(self):
         return self.processing_data["Workflow"]
@@ -488,11 +495,13 @@ class ExperimentStorageEngine:
                 print("UP SKIPCHECK", source_path, absolute_target)
                 if absolute_target is not None and absolute_target == source_path:
                     return
-                tdelta, fsize = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
-                if log:
-                    self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
-                if not keep_source_files:
-                    source_path.unlink()
+                put_result = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                if put_result:
+                    tdelta, fsize = put_result
+                    if log:
+                        self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
+                    if not keep_source_files:
+                        source_path.unlink()
             except:
                 self.logger.error(f"Failed to transfer {source_path} to {relative_target}")
                 raise
@@ -552,6 +561,17 @@ class ExperimentStorageEngine:
         sniffer = DataRulesSniffer(source_path, meta_rules, sniff_consumer, None, min_nochange_sec=0)
         sniffer.sniff_and_consume()
 
+
+    def download_raw(self, target: pathlib.Path):
+        dr = DataRuleWrapper('Raw/**/*.*', "raw", keep_tree=True)
+        dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download")
+        return dw_result, errs
+    
+    def upload_processed(self, source: pathlib.Path, target: pathlib.Path):
+        dr = DataRuleWrapper('**/*.*', "processed", target=target, keep_tree=True, skip_if_exists=False)
+        up_result, errs = self.upload(source, DataRulesWrapper([dr]), session_name="cs_processed_upload")
+        return up_result, errs
+    
     def extract_metadata(self):
         """ Using the configured metadata model, extract metadata from the sources"""
         def from_exp_source(path: str):

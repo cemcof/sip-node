@@ -23,6 +23,7 @@ class DataArchivationService(experiment.ExperimentModuleBase):
 
         # Archive (=move) data
         try:
+            print("ARCH", exp_engine.exp.secondary_id)
             archive_data_rules = exp_engine.data_rules.with_tags("archive")
             transfers, errs = exp_engine.transfer_to(exp_target_storage, archive_data_rules, move=True, session_name=f"archivation_to_{exp_target_storage_engine.replace('/', '_')}")
             if errs:

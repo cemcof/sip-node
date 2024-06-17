@@ -119,15 +119,21 @@ class EmMoviesHandler:
         if not first_movie:
             return None
         
+        first_movie = first_movie[0] # Only path component
+        
         # Get metadata file path
         moviemeta_data_rule: experiment.DataRuleWrapper = self.storage_engine.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
         first_meta = next(self.storage_engine.glob(moviemeta_data_rule.get_target_patterns()), None)
+        if first_meta:
+            first_meta = first_meta[0] # Only path component  
         self.logger.debug(f"First meta: {first_meta}")
 
         # Now gain file
         gain_file_rule = next(iter(self.storage_engine.data_rules.with_tags("gain", "raw")), None)
         if gain_file_rule:
             gain_ref = next(self.storage_engine.glob(gain_file_rule.get_target_patterns()), None)
+            if gain_ref:
+                gain_ref = gain_ref[0] # Only path component
             self.logger.debug(f"Gain ref: {gain_ref}")
         else:
             gain_ref = None
@@ -140,6 +146,7 @@ class EmMoviesHandler:
         if not movies_info:
             return None # There is no movie for the experiment - not ready to create the project, not enough information
                 
+        print(movies_info)
         for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
             # 1) Path to the source files
             path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0].target
@@ -170,3 +177,7 @@ class WorkflowWrapper:
             raise default(f"Key {key} not found in workflow")
         
         return default
+    
+class ProcessingBase:
+    def __init__(self) -> None:
+        pass
