@@ -325,7 +325,8 @@ class ScipionProcessingHandler(ExperimentModuleBase):
 
         def _filter_relevant_upload_results(up_result: list):
             # TODO - test
-            up_result = [f for f in up_result if not (".log" in f[0] or ".stdin" in f[0] or ".stdout" in f[0] or ".stderr" in f[0])]
+            # TODO - regexize
+            up_result = [f for f in up_result if not (".log" in f[0] or ".stdin" in f[0] or ".stdout" in f[0] or ".stderr" in f[0] or ".sqlite" in f[0] or ".html" in f[0])]
             return up_result
 
         # Define what will periodically happend to the project in each of the states
@@ -377,7 +378,7 @@ class ScipionProcessingHandler(ExperimentModuleBase):
             timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
             change_delta = now_utc - exp_engine.exp.processing.last_update
             is_still_active = exp_engine.exp.state == JobState.ACTIVE
-            print("RUN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
+            print("RUN Check", up_result, str(now_utc), timeout_delta.seconds, change_delta.seconds, is_still_active,  exp_engine.exp.processing.last_update)
             if not is_still_active and timeout_delta < change_delta:
                 # Last change is older than configured timeout - finish
                 exp_engine.exp.processing.last_update = now_utc
@@ -395,7 +396,7 @@ class ScipionProcessingHandler(ExperimentModuleBase):
             if up_result or not exp_engine.exp.processing.last_update:
                 # Update last processing change time 
                 exp_engine.exp.processing.last_update = now_utc
-            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "00:10:00.0"))
+            timeout_delta = common.parse_timedelta(cconf.get("finalizing_timeout", "00:5:00.0"))
             change_delta = now_utc - exp_engine.exp.processing.last_update
             print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
             if timeout_delta < change_delta:
