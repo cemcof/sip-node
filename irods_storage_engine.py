@@ -265,11 +265,38 @@ def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, 
 if __name__ == "__main__":
     import sys
     conffile = pathlib.Path(sys.argv[1])
-    key = sys.argv[2]
 
-    connection = yaml.safe_load(conffile.open("r"))[key]  
+    connection = yaml.safe_load(conffile.open("r"))
+    if 2 in sys.argv:
+        connection = connection[sys.argv[2]] 
     # Now quickly test that irods zone is working 
-    irods_session = iRODSSession(**connection)
-    print(irods_session.pam_pw_negotiated)
+    sess = iRODSSession(**connection)
+    home = pathlib.Path("/") / connection["zone"] / "home" / connection["user"]
+
+    def cols(path: pathlib.Path=home, recur=False, pref=""):
+        c = sess.collections.get(str(path))
+        for sc in c.subcollections:
+            print(pref + sc.name)
+            if recur:
+                cols(sc.path, recur, pref + "  ")
+
+    def col(path: pathlib.Path=""):
+        c = sess.collections.get(str(home / path))
+        return c
+    
+    def colw(path: pathlib.Path=""):
+        return IrodsCollectionWrapper(sess, home / path)
+    
+    def down(colw, target):
+        target = pathlib.Path(target)
+        patts = ["*"]
+        for src, _, _ in colw.glob(patts):
+            tar = target / src
+            tar.parent.mkdir(parents=True, exist_ok=True)
+            colw.get_file(src, target / src)
+            print("Downloaded", src, "to", tar)
+
+    sess.pam_pw_negotiated
+
 
 

@@ -134,3 +134,4 @@ config.dev.yml
 .vscode
 irods_connections.yml
 scripts
+irods_cemcof.yml
