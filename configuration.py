@@ -153,23 +153,30 @@ class LimsModuleConfigWrapper():
         self.node_name = node_name
 
     def get(self, item_path):
+        try: 
+            return self.__getitem__(item_path)
+        except KeyError:
+            return None
+        
+    def __getitem__(self, item):
         if self.module_name:
             module_config = self.lims_config.get_module_config(self.module_name, self.node_name)
-            val = common.get_dict_val_by_path(module_config, item_path)
+            val = common.get_dict_val_by_path(module_config, item)
             if val is not None:
                 return val
             
         # Now try node config 
         node_config = self.lims_config.get_node_config(self.node_name)
-        val = common.get_dict_val_by_path(node_config, item_path)
+        val = common.get_dict_val_by_path(node_config, item)
         if val is not None:
             return val
 
         # Try global config
-        return common.get_dict_val_by_path(self.lims_config.config, item_path)
-
-    def __getitem__(self, item):
-        return self.get(item)
+        global_c = common.get_dict_val_by_path(self.lims_config.config, item)
+        if global_c is not None:
+            return global_c
+        
+        raise KeyError(f"Key {item} not found in the configuration")
         
     
 

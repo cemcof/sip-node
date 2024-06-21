@@ -1,6 +1,9 @@
 import logging
 import pathlib
 import experiment
+import typing
+from common import lmod_getenv
+import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
 
 def module(lmod_path, command, *arguments):
@@ -12,10 +15,24 @@ def module(lmod_path, command, *arguments):
 
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
-    def __init__(self, gain_file: pathlib.Path, lmodule=None) -> None:
+    def __init__(self, gain_file: pathlib.Path, imod_env_provider: dict=None) -> None:
         """ lmodule is a tuple (path_to_lmod, module_name) of lmod module that must be loaded so the conversion software is available """
         self.gain_file = gain_file
-        self.lmodule = lmodule
+
+        if isinstance(imod_env_provider, dict):
+            # Do we have env directly? 
+            if "env" in imod_env_provider:
+                self.imod_env_provider = lambda: self.imod_env_provider["env"]
+            else:
+                # Try lmod module manager
+                self.imod_env_provider = functools.partial(lmod_getenv, imod_env_provider["lmod_path"], imod_env_provider["module"])
+        elif callable(imod_env_provider):
+            self.imod_env_provider = imod_env_provider
+        else:
+            def no_imod_env_provider():
+                raise ValueError("No imod environment provider given")
+            self.imod_env_provider = no_imod_env_provider
+
 
     def convert_to_mrc(self):
 
@@ -35,12 +52,8 @@ class GainRefConverter:
         return out_file
 
     def dm4_to_mrc(self, in_file: pathlib.Path, out_file: pathlib.Path):
-        if not self.lmodule:
-            raise ValueError("lmod is required to convert dm4 to mrc, no lmod config given")
-        
-        module(self.lmodule[0], 'load', self.lmodule[1])
-        os.system('dm2mrc %s %s' % (in_file,out_file))
-        module(self.lmodule[0], 'unload', self.lmodule[1])
+        env = self.imod_env_provider()
+        subprocess.run(["dm2mrc", in_file, out_file], env=env, stderr=subprocess.PIPE, check=True)  
 
     def eer_to_mrc(self, in_file: pathlib.Path, out_file: pathlib.Path):
         Iref = tifffile.imread(in_file)
@@ -50,9 +63,10 @@ class GainRefConverter:
 
 
 class EmMoviesHandler:
-    def __init__(self, storage_engine: experiment.ExperimentStorageEngine) -> None:
+    def __init__(self, storage_engine: experiment.ExperimentStorageEngine, imod_config: dict=None) -> None:
         self.storage_engine = storage_engine
         self.logger = logging.getLogger("EmMoviesHandler")
+        self.imod_config = imod_config  
     
     def extract_value_from_meta_content(meta_content: str, meta_type: str, key: str):
         if meta_type == "mdoc":
@@ -91,15 +105,17 @@ class EmMoviesHandler:
         if self.storage_engine.file_exists(gain_ref_target):
             return gain_ref_target
 
-        with tempfile.TemporaryDirectory() as td:
-            # First, copy from storage to temporary storage 
-            tmp_srcgain = pathlib.Path(td) / gain_ref.name
-            self.storage_engine.get_file(gain_ref, tmp_srcgain)
-            # Convert it
-            # lmod_config = self.storage_engine.config["Lmod"] TODO 
-            converted_gain_path = GainRefConverter(tmp_srcgain, None).convert_to_mrc()
-            self.storage_engine.put_file(gain_ref_target, converted_gain_path, skip_if_exists=True)
-
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                # First, copy from storage to temporary storage 
+                tmp_srcgain = pathlib.Path(td) / gain_ref.name
+                self.storage_engine.get_file(gain_ref, tmp_srcgain)
+                # Convert it
+                # lmod_config = self.storage_engine.config["Lmod"] TODO 
+                converted_gain_path = GainRefConverter(tmp_srcgain, self.imod_config).convert_to_mrc()
+                self.storage_engine.put_file(gain_ref_target, converted_gain_path, skip_if_exists=True)
+        except subprocess.CalledProcessError as e:
+            raise ValueError(f"Error during gain reference conversion: {e} {e.stderr}")
         return gain_ref_target
 
 

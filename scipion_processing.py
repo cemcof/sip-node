@@ -38,6 +38,10 @@ class ScipionWrapper:
         # scipion workspace directory must exists and be writable in order to run scipion
         self.scipion_projects_directory.mkdir(exist_ok=True, parents=True)
 
+        # Files for running in queue
+        self.stop_signal_file = self.project_directory / "_request_stop"
+        self.submit_script_file = self.project_directory / "queue_schedule_submit.sh"
+
     def _get_scipion_config_dir(self):
         """ Get directory that scipion considers as config directory """
         # First try user config 
@@ -172,17 +176,18 @@ class ScipionWrapper:
 
         # We need to temporarily save submit script template so we can pass it as path
         submit_script_template = que_conf["SubmitScriptTemplate"]
-        submit_script_template_file = self.project_directory / f"queue_schedule_submit.sh"
 
         context = { 
-            "submit_script": str(submit_script_template_file),
+            "submit_script": str(self.submit_script_file),
             "project_name": self.project_name,
             "wf_template_path": str(self.wf_template_path),
+            "stop_signal_path": str(self.stop_signal_file),
+            "scipion_exec": str(self.scipion_exec)
         }
 
         submit_cmd = submit_cmd_template % context
         submit_script = submit_script_template % context
-        submit_script_template_file.write_text(submit_script)
+        self.submit_script_file.write_text(submit_script)
 
         # Now we are ready to submit the queue job 
         self.logger.info(f"Executing: {submit_cmd}")
@@ -203,6 +208,12 @@ class ScipionWrapper:
         self.logger.info(f"Running scipion scheduler on the project, pid is {proc.pid}")
         return proc.pid
     
+    def stop(self):
+        if "Queue" in self.scipion_config:
+            return self._stop_queue()
+        else:
+            return self._stop_command()
+
     def _stop_command(self):
         cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.stop "{self.project_name}"')
         self.logger.info(f"Invoking: {cmd}")
@@ -210,6 +221,11 @@ class ScipionWrapper:
         self.logger.info(f"Exit {result.returncode}")
         self.logger.info(f"Stdout {result.stdout.strip()}")
         self.logger.info(f"Stderr {result.stderr.strip()}")
+
+    def _stop_queue(self):
+        # Stopping in queue is signaled through the file - the script running in the queue should be waiting for it.
+        self.stop_signal_file.touch()
+        pass
 
     @property
     def summary_results_directory(self):
@@ -232,7 +248,7 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
     """
     Extends ScipionWrapper with a context of LIMS experiment and it's storage
     """
-    def __init__(self, storage_engine : ExperimentStorageEngine, scipion_config: dict, logger: logging.Logger) -> None:
+    def __init__(self, storage_engine : ExperimentStorageEngine, scipion_config: dict, logger: logging.Logger, em_tools: processing_tools.EmMoviesHandler) -> None:
         self.storage_engine = storage_engine
         self.exp = storage_engine.exp
 
@@ -241,6 +257,7 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
         storage_loc = storage_engine.resolve_target_location()
         target_loc = storage_loc 
         self.raw_data_dir = storage_loc
+        self.em_handler = em_tools
 
         if not storage_loc:
             # If we dont have storage location, we need to put the project to the configured location (and do data transfering later)
@@ -259,9 +276,8 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
         """
         # Copy protocols 
         protocols = json.loads(json.dumps(protocols)) # Deep copy
-        movies_handler = processing_tools.EmMoviesHandler(self.storage_engine)
 
-        movie_info = movies_handler.set_importmovie_info(protocols, self.raw_data_dir)
+        movie_info = self.em_handler.set_importmovie_info(protocols, self.raw_data_dir)
         if not movie_info: # Not ready
             return None
             
@@ -321,7 +337,8 @@ class ScipionProcessingHandler(ExperimentModuleBase):
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         exp = exp_engine.exp
         cconf = self.module_config["ScipionConfig"]
-        sciw = ScipionExpWrapper(exp_engine, cconf, wrap_logger_origin(exp_engine.logger, "scipion"))
+        iconf = self.module_config.get("imod")
+        sciw = ScipionExpWrapper(exp_engine, cconf, wrap_logger_origin(exp_engine.logger, "scipion"), processing_tools.EmMoviesHandler(exp_engine, iconf))
 
         def _filter_relevant_upload_results(up_result: list):
             # TODO - test
@@ -385,7 +402,7 @@ class ScipionProcessingHandler(ExperimentModuleBase):
                 exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
 
         def state_stop_requested():
-            sciw._stop_command() # TODO 
+            sciw.stop()
             exp.processing.state = ProcessingState.FINALIZING
 
         def state_project_finalizing():

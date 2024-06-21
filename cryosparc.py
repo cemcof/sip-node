@@ -15,7 +15,8 @@ class CryosparcWrapper(StateObj):
     """ Connects LIMS experiments and their processing with the cryosparc engine"""
     def __init__(self, 
                  exp_engine: ExperimentStorageEngine, 
-                 config: dict): 
+                 config: dict,
+                 em_tools: processing_tools.EmMoviesHandler): 
         self.exp_engine = exp_engine
         self.exp = exp_engine.exp
         self.config = config
@@ -32,6 +33,7 @@ class CryosparcWrapper(StateObj):
 
         self.email = config["email"]
         self.cluster = config["computational_cluster"]
+        self.em_handler = em_tools
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
         args = [self.python_exec, self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
@@ -63,16 +65,14 @@ class CryosparcWrapper(StateObj):
         workflow: dict = json.loads(json.dumps(workflow)) # Deep copy
 
         # Get exposure values and set them to the workflow
-        em_handler = processing_tools.EmMoviesHandler(self.exp_engine)
-        
-        movie_info = em_handler.find_movie_information()
+        movie_info = self.em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
         path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir("movie", "raw")
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
-            "gainref_path" : str(self.raw_data_dir / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
+            "gainref_path" : self.em_handler.convert_gain_reference() str(self.raw_data_dir / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
         }
 
         # Use metadata to compute dose per stack (frame dose times number of frames)
@@ -136,7 +136,8 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         cconf = self.module_config["cryosparc_config"]
-        cw = CryosparcWrapper(exp_engine, cconf)
+        iconf = self.module_config.get("imod")
+        cw = CryosparcWrapper(exp_engine, cconf, processing_tools.EmMoviesHandler(exp_engine, iconf))
 
         def _filter_relevant_upload_results(up_result: list):
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]

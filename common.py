@@ -7,7 +7,7 @@ import threading
 import datetime
 import requests
 import urllib.parse
-
+import subprocess
 # Utility to convert file size to huma readable format
 # from https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
 def sizeof_fmt(num, suffix="B"):
@@ -235,3 +235,12 @@ def get_dict_val_by_path(data, path, default=None):
         
 def to_safe_filename(string):
     return re.sub(r'[\\/*?:"<>| ]', "_", string)
+
+
+def lmod_getenv(lmod_path, module_name):
+    """ Get environment variables from lmod module """
+    res = subprocess.run([lmod_path, "python", "load", module_name], capture_output=True, text=True, check=True)
+    pattern = r'os\.environ\["(.*?)"\] = "(.*?)";'
+    matches = re.findall(pattern, res.stdout)
+    env_dict = {key: value for key, value in matches}
+    return env_dict
