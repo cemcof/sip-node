@@ -106,16 +106,6 @@ def try_translate_path(path: pathlib.Path, src: pathlib.Path, dst: pathlib.Path)
 class DataWrapper:
     def __init__(self, data) -> None:
         self.data = data
-        
-
-def multiglob(path: pathlib.Path, patterns: list):
-    if isinstance(patterns, str):
-        patterns = [patterns]
-    for p in patterns:
-        for f in path.glob(p):
-            if f.is_file():
-                stat = f.stat()
-                yield f, stat.st_mtime, stat.st_size
 
 # Base url options is missing in requests library, thus this
 class BaseUrlSession(requests.Session):

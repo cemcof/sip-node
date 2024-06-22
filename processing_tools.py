@@ -6,13 +6,6 @@ from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
 
-def module(lmod_path, command, *arguments):
-  # /usr/share/lmod/lmod/libexec/lmod
-  commands = os.popen('%s python %s %s'\
-                      % (lmod_path, command, ' '.join(arguments))).read()
-  exec(commands)
-
-
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
     def __init__(self, gain_file: pathlib.Path, imod_env_provider: dict=None) -> None:
@@ -128,7 +121,7 @@ class EmMoviesHandler:
             Returns: tuple (movie file path, metadata file path, path to gain file) or None if no raw movie data found"""
 
         # Get movie file path
-        movie_datarule: experiment.DataRuleWrapper = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
+        movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
         first_movie = next(self.storage_engine.glob(movie_datarule.get_target_patterns()), None)
         
         self.logger.debug(f"First movie: {first_movie}")
@@ -138,7 +131,7 @@ class EmMoviesHandler:
         first_movie = first_movie[0] # Only path component
         
         # Get metadata file path
-        moviemeta_data_rule: experiment.DataRuleWrapper = self.storage_engine.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
+        moviemeta_data_rule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
         first_meta = next(self.storage_engine.glob(moviemeta_data_rule.get_target_patterns()), None)
         if first_meta:
             first_meta = first_meta[0] # Only path component  

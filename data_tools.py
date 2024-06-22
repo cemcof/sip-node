@@ -12,18 +12,29 @@ import yaml
 import common
 import functools
 
-class DataRuleWrapper:
-    def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, skip_if_exists=False) -> None:
+
+
+class DataRule:
+    def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, subfiles=True, skip_if_exists=False) -> None:
         self.patterns = patterns if isinstance(patterns, list) else [patterns]
         self.tags = tags if isinstance(tags, list) else [tags]
         self.target = pathlib.Path(target) if target else None
         self.keep_tree = keep_tree
         self.skip_if_exists = skip_if_exists
+        self.subfiles = subfiles
 
     def translate_to_target(self, path_relative: pathlib.Path):
         if self.target:
             return self.target / path_relative if self.keep_tree else self.target / path_relative.name
         return path_relative
+    
+    def match_files(self, files: typing.Iterable[pathlib.Path]):
+        files = list(files)
+        for f in files:
+            if any(f.match(p) for p in self.patterns):
+                yield f
+                if self.subfiles:
+                    yield from filter(lambda x: x.parent == f.parent and x.name.startswith(f.stem), files)
     
     def get_target_patterns(self):
         """ Gets glob pattern through which files for this rule can be searched in the target location """
@@ -31,23 +42,28 @@ class DataRuleWrapper:
         return [str(target_base / pathlib.Path(p).name) for p in self.patterns]
     
     def __str__(self) -> str:
-        return f"DataRuleWrapper({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.skip_if_exists})"
+        return f"DataRule({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.subfiles}, {self.skip_if_exists})"
 
 class DataRulesWrapper:
     def __init__(self, data_rules: list) -> None:
-        # Data_rules arg is a list that can contain both dicts or datarulewrapper objects
-        # Create self.data_rules where all items are DataRuleWrapper objects
-        self.data_rules : typing.List[DataRuleWrapper] = []
+        # Data_rules arg is a list that can contain both dicts or DataRule objects
+        # Create self.data_rules where all items are DataRule objects
+        self.data_rules : typing.List[DataRule] = []
         for dr in data_rules: 
-            if isinstance(dr, DataRuleWrapper):
-                self.data_rules.append(dr)
-            else:
-                self.data_rules.append(DataRuleWrapper(dr["Patterns"], dr["Tags"], dr["Target"] if "Target" in dr else None, dr["KeepTree"] if "KeepTree" in dr else False, dr["SkipIfExists"] if "SkipIfExists" in dr else False))
+            self.data_rules.append(dr if isinstance(dr, DataRule) else DataRule(**dr))
 
     def with_tags(self, *tags) -> 'DataRulesWrapper':
         # Filter current data rules by tag and return new dataruleswrapper object
         return DataRulesWrapper(list(filter(lambda x: set(tags).issubset(x.tags), self.data_rules)))
     
+    def match_files(self, files: typing.Iterable[pathlib.Path]):
+        files = set(files)
+        for dr in self.data_rules:
+            matched = set(dr.match_files(files))
+            for m in matched:
+                yield m, dr
+            files = files.difference(matched)
+
     def __iter__(self):
         return iter(self.data_rules)
 
@@ -61,7 +77,7 @@ class DataRulesSniffer:
 
         self.globber = globber
         if isinstance(globber, pathlib.Path):
-            self.globber = functools.partial(common.multiglob, globber)
+            self.globber = functools.partial(multiglob, globber, self.data_rules)
 
     def _load_metafile(self):
         if self.metafile and self.metafile.exists():
@@ -78,29 +94,28 @@ class DataRulesSniffer:
         errors = []
         metafile_append = self.metafile.open("a") if self.metafile else None
 
-        for data_rule in self.data_rules:
-            for f, ts_mod, size in self.globber(data_rule.patterns):
-                if self.should_exclude(f):
-                    continue
-                time_change = ts_mod
-                consumed_time = meta.get(str(f), None)
-                now = time.time()
+        for f, data_rule, ts_mod, size in self.globber():
+            if self.should_exclude(f):
+                continue
+            time_change = ts_mod
+            consumed_time = meta.get(str(f), None)
+            now = time.time()
 
-                is_ready = (now - time_change) > self.min_nochange_sec
-                should_consume = consumed_time is None or (self.reconsume_on_change and consumed_time < time_change)
+            is_ready = (now - time_change) > self.min_nochange_sec
+            should_consume = consumed_time is None or (self.reconsume_on_change and consumed_time < time_change)
 
-                if is_ready and should_consume:
-                    try:
-                        self.consumer(f, data_rule)
-                        # Consumation succeeded, mark this file consumed
-                        meta[str(f)] = now
-                        if metafile_append:
-                            metafile_append.write(f"{str(f)}: {now}\n")
-                            metafile_append.flush()
-                    except Exception as e:
-                        errors.append((f, e))
-                        traceback.print_exc()
-                        print(f"Consumation of {f} failed", e, file=sys.stderr)
+            if is_ready and should_consume:
+                try:
+                    self.consumer(f, data_rule)
+                    # Consumation succeeded, mark this file consumed
+                    meta[str(f)] = now
+                    if metafile_append:
+                        metafile_append.write(f"{str(f)}: {now}\n")
+                        metafile_append.flush()
+                except Exception as e:
+                    errors.append((f, e))
+                    traceback.print_exc()
+                    print(f"Consumation of {f} failed", e, file=sys.stderr)
 
         if metafile_append:
             metafile_append.close()
@@ -515,3 +530,12 @@ class MetadataModel:
             result = result if result is not None else default
             yield k, result, unit 
 
+
+def multiglob(path: pathlib.Path, data_rules: DataRulesWrapper):
+    # Glob whole tree and then match against the data rules, in given order
+    all_files = path.glob("**")
+    for f, dr in data_rules.match_files(all_files):
+        if f.is_file():
+            stat = f.stat()
+            yield f, dr, stat.st_mtime, stat.st_size
+            

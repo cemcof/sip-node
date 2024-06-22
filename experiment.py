@@ -14,7 +14,7 @@ import enum
 import uuid
 import inspect, tempfile
 from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRuleWrapper, MetadataModel
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel
 
 
 class JobState(enum.Enum):
@@ -483,11 +483,11 @@ class ExperimentStorageEngine:
         source_path = pathlib.Path(source_path)
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
-        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRuleWrapper(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
+        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
         return self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
 
     def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, keep_source_files=True, log=True):
-        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
+        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRule):
             try:
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source))
                 absolute_target = self.resolve_target_location(relative_target)
@@ -512,7 +512,7 @@ class ExperimentStorageEngine:
     
     def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
         data_rules = data_rules or self.data_rules
-        def download_consumer(source_path_relative: pathlib.Path, data_rule: DataRuleWrapper):
+        def download_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
             absolute_target = target / data_rule.translate_to_target(source_path_relative)
             absolute_source = self.resolve_target_location(source_path_relative)
             # Skip if target is same as the source 
@@ -529,11 +529,11 @@ class ExperimentStorageEngine:
     def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, move=False):
         """ Transfer data from this storage to another """
         if data_rules is None:
-            data_rules = DataRulesWrapper([DataRuleWrapper("**/*", ["all"], keep_tree=True)])
+            data_rules = DataRulesWrapper([DataRule("**/*", ["all"], keep_tree=True)])
 
         buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.exp.secondary_id}.dat"
 
-        def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRuleWrapper):
+        def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
             source_abs_path = self.resolve_target_location(source_path_relative)
             target_rel_path = data_rule.translate_to_target(source_path_relative)
             print("FWEFEWFEWF", source_path_relative, source_abs_path, target_rel_path)
@@ -554,7 +554,7 @@ class ExperimentStorageEngine:
     def sniff_and_process_metafile(self, source_path):
         source_path = pathlib.Path(source_path)
         meta_rules = self.data_rules.with_tags("metadata")
-        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRuleWrapper):
+        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRule):
             self.restore_metadata(yaml.full_load(source_path.read_text()))
             source_path.unlink()
 
@@ -563,12 +563,12 @@ class ExperimentStorageEngine:
 
 
     def download_raw(self, target: pathlib.Path):
-        dr = DataRuleWrapper('Raw/**/*.*', "raw", keep_tree=True)
+        dr = DataRule('Raw/**/*.*', "raw", keep_tree=True)
         dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download")
         return dw_result, errs
     
     def upload_processed(self, source: pathlib.Path, target: pathlib.Path):
-        dr = DataRuleWrapper('**/*.*', "processed", target=target, keep_tree=True, skip_if_exists=False)
+        dr = DataRule('**/*.*', "processed", target=target, keep_tree=True, skip_if_exists=False)
         up_result, errs = self.upload(source, DataRulesWrapper([dr]), session_name="cs_processed_upload")
         return up_result, errs
     

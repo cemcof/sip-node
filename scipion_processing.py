@@ -3,7 +3,7 @@
 import datetime
 import logging, subprocess, pathlib, json, shutil
 import re
-from data_tools import DataRuleWrapper, FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher, DataRulesWrapper
+from data_tools import DataRule, FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher, DataRulesWrapper
 import processing_tools, os
 from common import StateObj, exec_state, multiglob
 from logger_db_api import wrap_logger_origin

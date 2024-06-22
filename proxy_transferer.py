@@ -41,10 +41,10 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
         # Add rules for source patterns
-        data_rules = data_tools.DataRulesWrapper(data_rules.data_rules + [data_tools.DataRuleWrapper(p, ["raw"], ".", True) for p in exp.storage.source_patterns])
+        data_rules = data_tools.DataRulesWrapper(data_rules.data_rules + [data_tools.DataRule(p, ["raw"], ".", True) for p in exp.storage.source_patterns])
 
         source_dir = exp.storage.source_directory
-        def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRuleWrapper):
+        def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRule):
             path_rel = source_path.relative_to(source_dir)
             target = destination_dir / path_rel
             if target.exists() and target.stat().st_mtime >= source_path.stat().st_mtime:
