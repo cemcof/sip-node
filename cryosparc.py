@@ -72,8 +72,15 @@ class CryosparcWrapper(StateObj):
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
-            "gainref_path" : self.em_handler.convert_gain_reference() str(self.raw_data_dir / movie_info[2]) if movie_info[2] else None # TODO - do we have to convert for cryosparc? 
         }
+
+        # Gain ref 
+        try:
+            gain_ref = self.em_handler.convert_gain_reference()
+            workflow["gainref_path"] = str(self.raw_data_dir / gain_ref)
+        except Exception as e:
+            self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
+            raise
 
         # Use metadata to compute dose per stack (frame dose times number of frames)
         try:

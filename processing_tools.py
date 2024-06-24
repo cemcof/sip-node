@@ -104,7 +104,6 @@ class EmMoviesHandler:
                 tmp_srcgain = pathlib.Path(td) / gain_ref.name
                 self.storage_engine.get_file(gain_ref, tmp_srcgain)
                 # Convert it
-                # lmod_config = self.storage_engine.config["Lmod"] TODO 
                 converted_gain_path = GainRefConverter(tmp_srcgain, self.imod_config).convert_to_mrc()
                 self.storage_engine.put_file(gain_ref_target, converted_gain_path, skip_if_exists=True)
         except subprocess.CalledProcessError as e:
@@ -155,7 +154,6 @@ class EmMoviesHandler:
         if not movies_info:
             return None # There is no movie for the experiment - not ready to create the project, not enough information
                 
-        print(movies_info)
         for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
             # 1) Path to the source files
             path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0].target
@@ -166,9 +164,13 @@ class EmMoviesHandler:
             prot["movieSuffix"] = movie_path.suffix
             # 3) Gain file, if any
             if movies_info[2]:
-                gain_reference = self.convert_gain_reference(movies_info[2])
-                # Set reference to the gainfile for scipion
-                prot["gainFile"] = str(processing_source_path / gain_reference)
+                try:
+                    gain_reference = self.convert_gain_reference(movies_info[2])
+                    # Set reference to the gainfile for scipion
+                    prot["gainFile"] = str(processing_source_path / gain_reference)
+                except ValueError as e:
+                    self.logger.error(f"Error during gain reference conversion: {e}")
+                    raise # return None
 
         return movies_info
     
