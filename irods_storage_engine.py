@@ -99,24 +99,15 @@ class IrodsCollectionWrapper:
         # with dataobj.open('w') as file: 
         #     file.write(content)
             
-    def glob(self, patterns):
-        patterns = list(patterns)
+    def walk(self):
         def walk_collection(collection: iRODSCollection):
             for subcol in collection.subcollections:
                 yield from walk_collection(subcol) # Recurse into subcollections
             
             for dobj in collection.data_objects:
                 yield dobj
-        
-        for dataobj in walk_collection(self.collection):
-            relative_dataobj = pathlib.Path(dataobj.path).relative_to(self.collection_path)
 
-            # Does this relative path fnmatch one of given patterns?
-            for pattern in patterns:
-                # print(f"matching {pattern} against {relative_dataobj} = {fnmatch.fnmatch(str(relative_dataobj), pattern)}")
-                if fnmatch.fnmatch(str(relative_dataobj), pattern):
-                    yield relative_dataobj, dataobj.modify_time.timestamp(), dataobj.size
-                    break
+        yield from walk_collection(self.collection)
 
     def store_irods_metadata(self, metadata: dict, target_file: pathlib.Path=None):
         col = self.collection 
@@ -238,12 +229,13 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def purge(self):
         self.irods_collection.drop_collection()
     
-    def glob(self, patterns):
+    def glob(self, data_rules: data_tools.DataRulesWrapper):
         if (self.fs_underlying_storage):
-            return self.fs_underlying_storage.glob(patterns)
-        
-        return self.irods_collection.glob(patterns)
-    
+            return self.fs_underlying_storage.glob(data_rules)
+        print("h", self.irods_collection.collection_path)
+        files = { pathlib.Path(dobject.path).relative_to(self.collection_path) : dobject for dobject in self.irods_collection.walk() }
+        for f, dr in data_rules.match_files(files.keys()):
+            yield f, dr, files[f].modify_time.timestamp(), files[f].size # TODO - maybe old meta values for longer processing
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

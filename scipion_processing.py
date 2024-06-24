@@ -5,7 +5,7 @@ import logging, subprocess, pathlib, json, shutil
 import re
 from data_tools import DataRule, FileLogSnifferSource, FileWatcher, LogSniffer, LogSnifferCompositeSource, FilesWatcher, DataRulesWrapper
 import processing_tools, os
-from common import StateObj, exec_state, multiglob
+from common import StateObj, exec_state
 from logger_db_api import wrap_logger_origin
 from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
 import tempfile
@@ -343,13 +343,16 @@ class ScipionProcessingHandler(ExperimentModuleBase):
         def _filter_relevant_upload_results(up_result: list):
             # TODO - test
             # TODO - regexize
-            up_result = [f for f in up_result if not (".log" in f[0] or ".stdin" in f[0] or ".stdout" in f[0] or ".stderr" in f[0] or ".sqlite" in f[0] or ".html" in f[0])]
+            pattern = re.compile(r'\.(log|stdin|stdout|stderr|sqlite|html)$')
+            up_result = [f for f in up_result if not pattern.search(f[0])]
             return up_result
 
         # Define what will periodically happend to the project in each of the states
         def state_project_not_exists():
             workflow = sciw.prepare_protocol_data(exp.processing.workflow)
             if workflow: # If we get workflow, project is ready to be created and scheduled
+                print("READDDDDY")
+                return
                 sciw.ensure_project(workflow, purge_existing=True)
                 exp.processing.state = ProcessingState.READY
 

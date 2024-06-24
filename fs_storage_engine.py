@@ -5,7 +5,6 @@ import time, os, glob
 import configuration
 import experiment
 from experiment import ExperimentWrapper
-from common import multiglob
 import data_tools, common
 import pathlib
 import shutil
@@ -105,10 +104,10 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         target = self.resolve_target_location(path_relative)
         target.unlink()
 
-    def glob(self, patterns):
+    def glob(self, data_rules: data_tools.DataRulesWrapper):
         target = self.resolve_target_location()
-        for f, m, s in multiglob(target, patterns):
-            yield f.relative_to(target), m, s
+        for f, dr, m, s in data_tools.multiglob(target, data_rules):
+            yield f.relative_to(target), dr, m, s
 
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

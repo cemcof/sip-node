@@ -453,7 +453,7 @@ class ExperimentStorageEngine:
     def file_exists(self, path_relative: pathlib.Path):
         raise NotImplementedError()
     
-    def glob(self, patterns):
+    def glob(self, data_rules: DataRulesWrapper=None):
         raise NotImplementedError()
     
     def read_file(self, path_relative: pathlib.Path, as_text=True):

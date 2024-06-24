@@ -77,7 +77,7 @@ class DataRulesSniffer:
 
         self.globber = globber
         if isinstance(globber, pathlib.Path):
-            self.globber = functools.partial(multiglob, globber, self.data_rules)
+            self.globber = functools.partial(multiglob, globber)
 
     def _load_metafile(self):
         if self.metafile and self.metafile.exists():
@@ -94,7 +94,7 @@ class DataRulesSniffer:
         errors = []
         metafile_append = self.metafile.open("a") if self.metafile else None
 
-        for f, data_rule, ts_mod, size in self.globber():
+        for f, data_rule, ts_mod, size in self.globber(self.data_rules):
             if self.should_exclude(f):
                 continue
             time_change = ts_mod
