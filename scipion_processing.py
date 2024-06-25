@@ -341,8 +341,6 @@ class ScipionProcessingHandler(ExperimentModuleBase):
         sciw = ScipionExpWrapper(exp_engine, cconf, wrap_logger_origin(exp_engine.logger, "scipion"), processing_tools.EmMoviesHandler(exp_engine, iconf))
 
         def _filter_relevant_upload_results(up_result: list):
-            # TODO - test
-            # TODO - regexize
             pattern = re.compile(r'\.(log|stdin|stdout|stderr|sqlite|html)$')
             up_result = [f for f in up_result if not pattern.search(f[0])]
             return up_result

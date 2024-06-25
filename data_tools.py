@@ -10,14 +10,15 @@ import typing
 import traceback
 import yaml
 import common
+from common import as_list
 import functools
 
 
 
 class DataRule:
     def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, subfiles=True, skip_if_exists=False) -> None:
-        self.patterns = patterns if isinstance(patterns, list) else [patterns]
-        self.tags = tags if isinstance(tags, list) else [tags]
+        self.patterns = as_list(patterns)
+        self.tags = as_list(tags)
         self.target = pathlib.Path(target) if target else None
         self.keep_tree = keep_tree
         self.skip_if_exists = skip_if_exists
@@ -30,6 +31,7 @@ class DataRule:
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
         files = list(files)
+        print(self.patterns)
         for f in files:
             if any(f.match(p) for p in self.patterns):
                 yield f
@@ -45,10 +47,12 @@ class DataRule:
         return f"DataRule({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.subfiles}, {self.skip_if_exists})"
 
 class DataRulesWrapper:
-    def __init__(self, data_rules: list) -> None:
+    def __init__(self, data_rules: typing.Union[list, DataRule, dict]) -> None:
         # Data_rules arg is a list that can contain both dicts or DataRule objects
         # Create self.data_rules where all items are DataRule objects
         self.data_rules : typing.List[DataRule] = []
+        if isinstance(data_rules, DataRule) or isinstance(data_rules, dict):
+            data_rules = [data_rules]
         for dr in data_rules: 
             self.data_rules.append(dr if isinstance(dr, DataRule) else DataRule(**dr))
 
@@ -67,7 +71,7 @@ class DataRulesWrapper:
     def get_target_for(self, *tags, **rule_args) -> DataRule:
         patts_result = []
         for rule in self.with_tags(*tags):
-            patts_result.append(rule.get_target_patterns())
+            patts_result = patts_result + rule.get_target_patterns()
         return DataRule(patts_result, tags, **rule_args)
 
     def __iter__(self):
