@@ -64,9 +64,18 @@ class DataRulesWrapper:
                 yield m, dr
             files = files.difference(matched)
 
+    def get_target_for(self, *tags, **rule_args) -> DataRule:
+        patts_result = []
+        for rule in self.with_tags(*tags):
+            patts_result.append(rule.get_target_patterns())
+        return DataRule(patts_result, tags, **rule_args)
+
     def __iter__(self):
         return iter(self.data_rules)
 
+    def __str__(self) -> str:
+        return "[ " + ", ".join(map(lambda x: str(x), self.data_rules)) + " ] "
+    
 class DataRulesSniffer:
     def __init__(self, globber: typing.Union[pathlib.Path, typing.Callable], data_rules: DataRulesWrapper, consumer, metafile: pathlib.Path = None, min_nochange_sec=10, reconsume_on_change=True) -> None:
         self.data_rules = data_rules
@@ -533,7 +542,7 @@ class MetadataModel:
 
 def multiglob(path: pathlib.Path, data_rules: DataRulesWrapper):
     # Glob whole tree and then match against the data rules, in given order
-    all_files = path.glob("**")
+    all_files = path.glob("**/*")
     for f, dr in data_rules.match_files(all_files):
         if f.is_file():
             stat = f.stat()

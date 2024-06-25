@@ -5,6 +5,7 @@ import typing
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
+from data_tools import DataRulesWrapper, DataRule
 
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
@@ -120,26 +121,23 @@ class EmMoviesHandler:
             Returns: tuple (movie file path, metadata file path, path to gain file) or None if no raw movie data found"""
 
         # Get movie file path
-        movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
-        first_movie = next(self.storage_engine.glob(movie_datarule.get_target_patterns()), None)
+        # movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
+        movie_rule = self.storage_engine.data_rules.get_target_for("movie", "raw", subfiles=True)
+        movie_rule = DataRulesWrapper(movie_rule)
+        movie_glob = self.storage_engine.glob(movie_rule)
+        first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
         
-        self.logger.debug(f"First movie: {first_movie}")
+        self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         if not first_movie:
             return None
         
-        first_movie = first_movie[0] # Only path component
+        first_movie, first_movie = first_movie[0], first_meta[0] # Only path component
         
-        # Get metadata file path
-        moviemeta_data_rule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie_metafile", "raw").data_rules[0]
-        first_meta = next(self.storage_engine.glob(moviemeta_data_rule.get_target_patterns()), None)
-        if first_meta:
-            first_meta = first_meta[0] # Only path component  
-        self.logger.debug(f"First meta: {first_meta}")
-
         # Now gain file
-        gain_file_rule = next(iter(self.storage_engine.data_rules.with_tags("gain", "raw")), None)
-        if gain_file_rule:
-            gain_ref = next(self.storage_engine.glob(gain_file_rule.get_target_patterns()), None)
+        gain_rule = self.storage_engine.data_rules.get_target_for("gain", "raw", subfiles=False)
+        gain_rule = DataRulesWrapper(gain_rule)
+        if gain_rule.data_rules:
+            gain_ref = next(self.storage_engine.glob(gain_rule), None)
             if gain_ref:
                 gain_ref = gain_ref[0] # Only path component
             self.logger.debug(f"Gain ref: {gain_ref}")

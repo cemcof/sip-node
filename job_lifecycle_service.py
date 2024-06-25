@@ -14,7 +14,6 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
 
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
-
         types = self.module_config["experiment_types"]
         exp_filter = next(filter(lambda x: exp_engine.exp.exp_type_matches(x["pattern"]), types), None)
         if not exp_filter: # This experiment should not be handled by this node
