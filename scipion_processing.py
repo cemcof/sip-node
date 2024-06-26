@@ -349,8 +349,6 @@ class ScipionProcessingHandler(ExperimentModuleBase):
         def state_project_not_exists():
             workflow = sciw.prepare_protocol_data(exp.processing.workflow)
             if workflow: # If we get workflow, project is ready to be created and scheduled
-                print("READDDDDY")
-                return
                 sciw.ensure_project(workflow, purge_existing=True)
                 exp.processing.state = ProcessingState.READY
 

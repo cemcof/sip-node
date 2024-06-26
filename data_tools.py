@@ -31,7 +31,6 @@ class DataRule:
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
         files = list(files)
-        print(self.patterns)
         for f in files:
             if any(f.match(p) for p in self.patterns):
                 yield f

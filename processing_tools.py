@@ -126,12 +126,16 @@ class EmMoviesHandler:
         movie_rule = DataRulesWrapper(movie_rule)
         movie_glob = self.storage_engine.glob(movie_rule)
         first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
-        
-        self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         if not first_movie:
             return None
-        
-        first_movie, first_movie = first_movie[0], first_meta[0] # Only path component
+        first_movie = first_movie[0] # Only path component
+
+        if first_meta and first_meta[0].name.startswith(first_movie.stem):
+            first_meta = first_meta[0] # Only path component
+        else:
+            first_meta = None
+
+        self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         
         # Now gain file
         gain_rule = self.storage_engine.data_rules.get_target_for("gain", "raw", subfiles=False)

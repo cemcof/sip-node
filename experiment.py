@@ -14,7 +14,7 @@ import enum
 import uuid
 import inspect, tempfile
 from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, list_directory
 
 
 class JobState(enum.Enum):
@@ -669,12 +669,12 @@ class ExpFileBrowser(configuration.LimsNodeModule):
             if scope == "autopicking":
                 roots = [{"Path": self.module_config["AutopickingModelsPath"],
                           "Name": "Autopicking models"}]
-                result_path = filebrowser.list_directory(path, roots, self.logger)
+                result_path = list_directory(path, roots, self.logger)
             else:
                 inst, job = scope.split("/")
                 drives = self.get_available_drives(inst, job, self.module_config)
                 roots = [{"Path": d["Path"], "Name": d["Label"]} for d in drives]
-                result_path = filebrowser.list_directory(path, roots, self.logger)
+                result_path = list_directory(path, roots, self.logger)
                 
             result[reqid] = result_path
 
