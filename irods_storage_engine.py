@@ -279,6 +279,10 @@ if __name__ == "__main__":
     def colw(path: pathlib.Path=""):
         return IrodsCollectionWrapper(sess, home / path)
     
+    def colc(path: pathlib.Path=""):
+        sess.collections.create(str(home / path))
+        return col(path)
+    
     def down(colw, target):
         target = pathlib.Path(target)
         patts = ["*"]

@@ -35,7 +35,8 @@ class DataRule:
             if any(f.match(p) for p in self.patterns):
                 yield f
                 if self.subfiles:
-                    yield from filter(lambda x: x.parent == f.parent and x.name.startswith(f.stem), files)
+                    subs = filter(lambda x: x.parent == f.parent and x.name.startswith(f.stem) and x.name != f.name, files)
+                    yield from subs
     
     def get_target_patterns(self):
         """ Gets glob pattern through which files for this rule can be searched in the target location """
@@ -62,9 +63,10 @@ class DataRulesWrapper:
     def match_files(self, files: typing.Iterable[pathlib.Path]):
         files = set(files)
         for dr in self.data_rules:
-            matched = set(dr.match_files(files))
-            for m in matched:
+            matched = set()
+            for m in dr.match_files(files):
                 yield m, dr
+                matched.add(m)
             files = files.difference(matched)
 
     def get_target_for(self, *tags, **rule_args) -> DataRule:
@@ -105,7 +107,7 @@ class DataRulesSniffer:
         meta = self._load_metafile() or {}
         errors = []
         metafile_append = self.metafile.open("a") if self.metafile else None
-
+        
         for f, data_rule, ts_mod, size in self.globber(self.data_rules):
             if self.should_exclude(f):
                 continue
