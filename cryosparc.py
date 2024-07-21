@@ -5,6 +5,7 @@ import os, sys, re, json, pathlib
 from io import TextIOWrapper
 import subprocess
 from common import StateObj, exec_state
+import numpy as np
 import processing_tools
 import data_tools
 import fs_storage_engine
@@ -91,6 +92,15 @@ class CryosparcWrapper(StateObj):
         except Exception as e:
             self.exp_engine.logger.error(f"Error during dose computation: {e}")
             raise
+
+        # Some computed values
+        apix = float(workflow["mscope_params"]["psize_A"])
+        particle_diameter = float(workflow["blob_pick"]["diameter"])
+        workflow["motion_settings"]["res_max_align"] = np.ceil(4.0 * apix)
+        workflow["ctf_settings"]["res_max_align"] = np.floor(3.0 * apix)
+        workflow["blob_pick"]["diameter"] = 0.8 * particle_diameter
+        workflow["blob_pick"]["diameter_max"] = 1.2 * particle_diameter
+        workflow["extraction"]["box_size_pix"] = 1.5 * particle_diameter / apix
 
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
