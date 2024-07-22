@@ -223,6 +223,15 @@ def get_dict_val_by_path(data, path, default=None):
         except (KeyError, TypeError): 
             return default
     return tmp_val
+
+def set_dict_val_by_path(data, path, value):
+    path_parts = path.split("/")
+    current = data
+    for part in path_parts[:-1]:
+        if part not in current:
+            current[part] = {}
+        current = current[part]
+    current[path_parts[-1]] = value
         
 def to_safe_filename(string):
     return re.sub(r'[\\/*?:"<>| ]', "_", string)

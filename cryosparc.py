@@ -76,12 +76,13 @@ class CryosparcWrapper(StateObj):
         }
 
         # Gain ref 
-        try:
-            gain_ref = self.em_handler.convert_gain_reference()
-            workflow["gainref_path"] = str(self.raw_data_dir / gain_ref)
-        except Exception as e:
-            self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
-            raise
+        if movie_info[2]:
+            try:
+                gain_ref = self.em_handler.convert_gain_reference(movie_info[2])
+                workflow["exposure"]["gainref_path"] = str(self.raw_data_dir / gain_ref)
+            except Exception as e:
+                self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
+                raise
 
         # Use metadata to compute dose per stack (frame dose times number of frames)
         try:
@@ -96,11 +97,11 @@ class CryosparcWrapper(StateObj):
         # Some computed values
         apix = float(workflow["mscope_params"]["psize_A"])
         particle_diameter = float(workflow["blob_pick"]["diameter"])
-        workflow["motion_settings"]["res_max_align"] = np.ceil(4.0 * apix)
-        workflow["ctf_settings"]["res_max_align"] = np.floor(3.0 * apix)
-        workflow["blob_pick"]["diameter"] = 0.8 * particle_diameter
-        workflow["blob_pick"]["diameter_max"] = 1.2 * particle_diameter
-        workflow["extraction"]["box_size_pix"] = 1.5 * particle_diameter / apix
+        common.set_dict_val_by_path(workflow, "motion_settings/res_max_align", np.ceil(4.0 * apix))
+        common.set_dict_val_by_path(workflow, "ctf_settings/res_max_align", np.floor(3.0 * apix))
+        common.set_dict_val_by_path(workflow, "blob_pick/diameter", 0.8 * particle_diameter)
+        common.set_dict_val_by_path(workflow, "blob_pick/diameter_max", 1.2 * particle_diameter)
+        common.set_dict_val_by_path(workflow, "extraction/box_size_pix", 1.5 * particle_diameter / apix)
 
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
