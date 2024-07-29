@@ -25,8 +25,8 @@ class TCPProxyServer:
                 self.remote_host, self.remote_port, ssl=self.ssl_context_out)
             client_name = local_writer._transport.get_extra_info('peername')
             target = remote_writer._transport.get_extra_info('peername')
-            
-            print(f"New client {client_name} -> {target}")
+
+            print(f"New client {client_name} -> {target}, ssl_version={self.ssl_context_out.protocol}")
             async def forward(reader, writer):
                 try:
                     while True:
@@ -56,7 +56,7 @@ class TCPProxyServer:
     async def start(self):
         server = await asyncio.start_server(
             self.handle_client, self.local_host, self.local_port, ssl=self.ssl_context_in)
-        print(f'Serving on {self.local_host}:{self.local_port}')
+        print(f'Serving on {self.local_host}:{self.local_port}, ssl_version={self.ssl_context_in.protocol}')
         async with server:
             await server.serve_forever()
 
