@@ -17,6 +17,7 @@ class TCPProxyServer:
         if self.skip_cert_verification:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
+        print(f"New SSL context: purpose={purpose}, verify_mode={ssl_context.verify_mode}, version={ssl_context.protocol}")
         return ssl_context
 
     async def handle_client(self, local_reader, local_writer):
@@ -26,7 +27,7 @@ class TCPProxyServer:
             client_name = local_writer._transport.get_extra_info('peername')
             target = remote_writer._transport.get_extra_info('peername')
 
-            print(f"New client {client_name} -> {target}, ssl_version={self.ssl_context_out.protocol}")
+            print(f"New client {client_name} -> {target}")
             async def forward(reader, writer):
                 try:
                     while True:
@@ -56,7 +57,7 @@ class TCPProxyServer:
     async def start(self):
         server = await asyncio.start_server(
             self.handle_client, self.local_host, self.local_port, ssl=self.ssl_context_in)
-        print(f'Serving on {self.local_host}:{self.local_port}, ssl_version={self.ssl_context_in.protocol}')
+        print(f'Serving on {self.local_host}:{self.local_port}')
         async with server:
             await server.serve_forever()
 
