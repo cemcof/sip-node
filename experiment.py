@@ -495,7 +495,7 @@ class ExperimentStorageEngine:
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source))
                 absolute_target = self.resolve_target_location(relative_target)
                 # Skip if target is same as the source 
-                print("UP SKIPCHECK", source_path, absolute_target)
+                # print("UP SKIPCHECK", source_path, absolute_target)
                 if absolute_target is not None and absolute_target == source_path:
                     return
                 put_result = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
@@ -504,9 +504,12 @@ class ExperimentStorageEngine:
                     if log:
                         self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
                     if not keep_source_files:
-                        source_path.unlink()
-            except:
-                self.logger.error(f"Failed to transfer {source_path} to {relative_target}")
+                        try:
+                            source_path.unlink()
+                        except Exception as e: 
+                            self.logger.error(f"Failed to remove {source_path}: {e}")
+            except Exception as e:
+                self.logger.error(f"Failed to transfer {source_path} to {relative_target}: {e}")
                 raise
 
         tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
