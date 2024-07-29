@@ -9,10 +9,11 @@ class TCPProxyServer:
         self.remote_host, self.remote_port = remote_addr
         self.use_ssl = use_ssl
         self.skip_cert_verification = skip_cert_verification
-        self.ssl_context = self.create_ssl_context() if use_ssl else None
+        self.ssl_context_out = self.create_ssl_context(ssl.Purpose.CLIENT_AUTH) if use_ssl else None
+        self.ssl_context_in = self.create_ssl_context(ssl.Purpose.SERVER_AUTH) if use_ssl else None
 
-    def create_ssl_context(self):
-        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    def create_ssl_context(self, purpose=ssl.Purpose.SERVER_AUTH):
+        ssl_context = ssl.create_default_context(purpose)
         if self.skip_cert_verification:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
@@ -21,21 +22,22 @@ class TCPProxyServer:
     async def handle_client(self, local_reader, local_writer):
         try:
             remote_reader, remote_writer = await asyncio.open_connection(
-                self.remote_host, self.remote_port, ssl=self.ssl_context)
+                self.remote_host, self.remote_port, ssl=self.ssl_context_out)
+            client_name = local_writer._transport.get_extra_info('peername')
+            target = remote_writer._transport.get_extra_info('peername')
             
-            client_name = local_reader.get_extra_info('peername')
-            print(f"New client: {client_name}")
-
+            print(f"New client {client_name} -> {target}")
             async def forward(reader, writer):
                 try:
                     while True:
                         data = await reader.read(4096)
                         if not data:
                             break
+                        # print("WRITING DATA", data)
                         writer.write(data)
                         await writer.drain()
                 except Exception as e:
-                    print(f'Connection error: {e}')
+                    print(f'Connection error: {e}, {client_name}')
                 finally:
                     writer.close()
 
@@ -44,6 +46,8 @@ class TCPProxyServer:
                 forward(remote_reader, local_writer)
             )
 
+            print(f"Client finished: {client_name}")
+
         except Exception as e:
             print(f'Failed to connect to remote server: {e}')
         finally:
@@ -51,7 +55,7 @@ class TCPProxyServer:
 
     async def start(self):
         server = await asyncio.start_server(
-            self.handle_client, self.local_host, self.local_port, ssl=self.ssl_context)
+            self.handle_client, self.local_host, self.local_port, ssl=self.ssl_context_in)
         print(f'Serving on {self.local_host}:{self.local_port}')
         async with server:
             await server.serve_forever()
