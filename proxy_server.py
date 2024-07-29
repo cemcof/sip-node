@@ -22,6 +22,8 @@ class TCPProxyServer:
         try:
             remote_reader, remote_writer = await asyncio.open_connection(
                 self.remote_host, self.remote_port, ssl=self.ssl_context)
+            
+            print(f"New client: {local_reader.get_extra_info("peername")}")
 
             async def forward(reader, writer):
                 try:
