@@ -302,11 +302,12 @@ def map_direntry(direntry):
     }
 
 
-def map_direntry_from_config(direntry):
+def map_direntry_from_config(direntry, allow_pick=True):
     return {
         "Path": direntry["Path"],
         "Name": direntry["Name"] if "Name" in direntry else None,
-        "IsDirectory": True
+        "IsDirectory": True,
+        "AllowPick": allow_pick
     }
 
 def sort_file_items(items: list):
@@ -325,7 +326,7 @@ def list_directory(path: str, roots: list, logger: logging.Logger):
     # If requested directory does not start with any configured root paths, return rootpaths themselves.
     root = [p for p in roots if dirn.startswith(p["Path"])]
     if not root:
-        return list(map(map_direntry_from_config, roots))
+        return list(map(functools.partial(map_direntry_from_config, allow_pick=False), roots))
 
     result = []
     # Otherwise, scan the directory
