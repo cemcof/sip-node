@@ -302,12 +302,12 @@ def map_direntry(direntry):
     }
 
 
-def map_direntry_from_config(direntry, allow_pick=True):
+def map_direntry_from_config(direntry):
     return {
         "Path": direntry["Path"],
         "Name": direntry["Name"] if "Name" in direntry else None,
         "IsDirectory": True,
-        "AllowPick": allow_pick
+        "AllowPick": False
     }
 
 def sort_file_items(items: list):
@@ -326,13 +326,14 @@ def list_directory(path: str, roots: list, logger: logging.Logger):
     # If requested directory does not start with any configured root paths, return rootpaths themselves.
     root = [p for p in roots if dirn.startswith(p["Path"])]
     if not root:
-        return list(map(functools.partial(map_direntry_from_config, allow_pick=False), roots))
+        return list(map(map_direntry_from_config, roots))
 
     result = []
     # Otherwise, scan the directory
-    if root[0] != dirn:  # Add parent and current directory entry
-        result.append({"Path": parentdirn, "Name": "..", "IsDirectory": True})
-        result.append({"Path": dirn, "Name": ".", "IsDirectory": True})
+    rootdir = root[0]["Path"]
+    logger.debug(f"Rootdir is: {rootdir}")
+    result.append({"Path": parentdirn, "Name": "..", "IsDirectory": True, "AllowPick": rootdir != parentdirn})
+    result.append({"Path": dirn, "Name": ".", "IsDirectory": True})
 
     logger.debug("Before os.scandir.")
     tm = time.time()
