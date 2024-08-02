@@ -179,13 +179,16 @@ class Server(object) :
         r.append(self.sock)
     def postWait(self, r, w, e) :
         if self.sock in r :
-            try :
+            try:
                 cl,addr = self.sock.accept()
-            except ssl.SSLError as e :
-                print("ssl error during accept", e)
+                cl.setblocking(0)
+                prox = Proxy(self.opt, cl, addr)
+            except Exception as e:
+                print(f"Error connecting peer: {e}")
+                safeClose(cl)
                 return
-            cl.setblocking(0)
-            self.q.append(Proxy(self.opt, cl, addr))
+            
+            self.q.append(prox)
             if self.opt.oneshot :
                 safeClose(self.sock)
                 return 'elvis has left the building'
@@ -293,10 +296,7 @@ class Proxy(object) :
         # note: blocking connect for simplicity for now...
         ver = getSslVers(opt, opt.sslOut)
         
-        try: # TODO - dispose?
-            peer = tcpConnect(opt.ip6, opt.addr, opt.port, 0, ver, opt.clientCert)
-        except Exception as e:
-            print(f"Error connecting peer: {e}")
+        peer = tcpConnect(opt.ip6, opt.addr, opt.port, 0, ver, opt.clientCert)
 
         self.peer = Half(opt, peer, addr, 'o')
 
