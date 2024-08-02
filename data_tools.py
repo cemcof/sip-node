@@ -333,7 +333,7 @@ def list_directory(path: str, roots: list, logger: logging.Logger):
     rootdir = root[0]["Path"]
     logger.debug(f"Rootdir is: {rootdir}")
     result.append({"Path": parentdirn, "Name": "..", "IsDirectory": True, "AllowPick": rootdir != parentdirn})
-    result.append({"Path": dirn, "Name": ".", "IsDirectory": True})
+    result.append({"Path": dirn, "Name": ".", "IsDirectory": True, "AllowPick": rootdir != dirn})
 
     logger.debug("Before os.scandir.")
     tm = time.time()
