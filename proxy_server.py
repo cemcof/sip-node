@@ -4,20 +4,20 @@ import socket
 import ssl
 
 class TCPProxyServer:
-    def __init__(self, local_addr, remote_addr, use_ssl, skip_cert_verification):
+    def __init__(self, local_addr, remote_addr, use_ssl, skip_cert_verification, cert=None):
         self.local_host, self.local_port = local_addr
         self.remote_host, self.remote_port = remote_addr
         self.use_ssl = use_ssl
         self.skip_cert_verification = skip_cert_verification
         self.ssl_context_out = self.create_ssl_context(ssl.Purpose.CLIENT_AUTH) if use_ssl else None
-        self.ssl_context_in = self.create_ssl_context(ssl.Purpose.SERVER_AUTH) if use_ssl else None
+        self.ssl_context_in = self.create_ssl_context(ssl.Purpose.SERVER_AUTH, capath=cert) if use_ssl else None
 
-    def create_ssl_context(self, purpose=ssl.Purpose.SERVER_AUTH):
-        ssl_context = ssl.create_default_context(purpose)
+    def create_ssl_context(self, purpose=ssl.Purpose.SERVER_AUTH, capath=None):
+        ssl_context = ssl.create_default_context(purpose, capath=capath)
         if self.skip_cert_verification:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
-        print(f"New SSL context: purpose={purpose}, verify_mode={ssl_context.verify_mode}, version={ssl_context.protocol}")
+        print(f"New SSL context: purpose={purpose}, verify_mode={ssl_context.verify_mode}, version={ssl_context.protocol}, capath={capath}")
         return ssl_context
 
     async def handle_client(self, local_reader, local_writer):
@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument('-r', '--remote', type=str, required=True, help='Remote address in the format host:port')
     parser.add_argument('-s', '--ssl', action='store_true', help='Use SSL for connections to the remote host')
     parser.add_argument('-k', '--skip-cert', action='store_true', help='Skip SSL certificate verification')
+    parser.add_argument('-c', '--cert', type=str, help='SSL for clients')
 
     args = parser.parse_args()
 
@@ -74,16 +75,16 @@ def parse_args():
     local_host, local_port = args.local.split(':')
     remote_host, remote_port = args.remote.split(':')
 
-    return (local_host, int(local_port)), (remote_host, int(remote_port)), args.ssl, args.skip_cert
+    return (local_host, int(local_port)), (remote_host, int(remote_port)), args.ssl, args.skip_cert, args.cert
 
 def main():
-    local_addr, remote_addr, use_ssl, skip_cert_verification = parse_args()
+    local_addr, remote_addr, use_ssl, skip_cert_verification, cert = parse_args()
 
     # Resolve hostnames to IP addresses
     local_host_ip = socket.gethostbyname(local_addr[0])
     remote_host_ip = socket.gethostbyname(remote_addr[0])
 
-    proxy_server = TCPProxyServer((local_host_ip, local_addr[1]), (remote_host_ip, remote_addr[1]), use_ssl, skip_cert_verification)
+    proxy_server = TCPProxyServer((local_host_ip, local_addr[1]), (remote_host_ip, remote_addr[1]), use_ssl, skip_cert_verification, cert)
     
     try:
         asyncio.run(proxy_server.start())
@@ -185,7 +186,6 @@ class Server(object) :
                 prox = Proxy(self.opt, cl, addr)
             except Exception as e:
                 print(f"Error connecting peer: {e}")
-                safeClose(cl)
                 return
             
             self.q.append(prox)
@@ -410,4 +410,4 @@ def main_old() :
 
 
 if __name__ == '__main__' :
-    main_old()
+    main()
