@@ -57,7 +57,7 @@ class TCPProxyServer:
     async def start(self):
         server = await asyncio.start_server(
             self.handle_client, self.local_host, self.local_port, ssl=self.ssl_context_in)
-        print(f'Serving on {self.local_host}:{self.local_port}')
+        print(f'Serving on {self.local_host}:{self.local_port}, forwarding to {self.remote_host}:{self.remote_port}')
         async with server:
             await server.serve_forever()
 
