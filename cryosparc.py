@@ -80,7 +80,7 @@ class CryosparcWrapper(StateObj):
             try:
                 gain_ref = self.em_handler.convert_gain_reference(movie_info[2])
                 workflow["exposure"]["gainref_path"] = str(self.raw_data_dir / gain_ref)
-            except Exception as e:
+            except ValueError as e:
                 self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
                 raise
 
@@ -101,8 +101,8 @@ class CryosparcWrapper(StateObj):
         common.set_dict_val_by_path(workflow, "ctf_settings/res_max_align", np.floor(3.0 * apix))
         common.set_dict_val_by_path(workflow, "blob_pick/diameter", 0.8 * particle_diameter)
         common.set_dict_val_by_path(workflow, "blob_pick/diameter_max", 1.2 * particle_diameter)
-        common.set_dict_val_by_path(workflow, "extraction/box_size_pix", 1.5 * particle_diameter / apix)
-
+        common.set_dict_val_by_path(workflow, "extraction/box_size_pix", round((1.5 * particle_diameter / apix) / 2) * 2)
+        
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
         # Directory must exist or cryosparc fails

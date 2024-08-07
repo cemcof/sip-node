@@ -5,7 +5,7 @@ import typing
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
-from data_tools import DataRulesWrapper, DataRule
+from data_tools import DataRulesWrapper, DataRule, TransferCondition
 
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
@@ -106,7 +106,7 @@ class EmMoviesHandler:
                 self.storage_engine.get_file(gain_ref, tmp_srcgain)
                 # Convert it
                 converted_gain_path = GainRefConverter(tmp_srcgain, self.imod_config).convert_to_mrc()
-                self.storage_engine.put_file(gain_ref_target, converted_gain_path, skip_if_exists=True)
+                self.storage_engine.put_file(gain_ref_target, converted_gain_path, condition=TransferCondition.IF_MISSING)
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Error during gain reference conversion: {e} {e.stderr}")
         return gain_ref_target
