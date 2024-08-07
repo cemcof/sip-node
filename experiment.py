@@ -209,6 +209,8 @@ class ExperimentStorageWrapper:
         if self.keep_source_files:
             for r in raw_rules:
                 r.action = TransferAction.COPY
+
+        return raw_rules
     
     @property
     def state(self):
@@ -495,7 +497,6 @@ class ExperimentStorageEngine:
         # Add raw files specified by user on the experiment 
         raw_rules = self.exp.storage.get_combined_raw_datarules(raw_rules)
         
-            
         return self.upload(source_path, raw_rules, session_name="raw")
 
     def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, log=True):

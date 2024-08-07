@@ -101,7 +101,7 @@ class CryosparcWrapper(StateObj):
         workflow["ctf_settings"]["res_max_align"] = np.floor(3.0 * apix)
         workflow["blob_pick"]["diameter"] = 0.8 * particle_diameter
         workflow["blob_pick"]["diameter_max"] = 1.2 * particle_diameter
-        workflow["extraction"]["box_size_pix"] = 1.5 * particle_diameter / apix
+        workflow["extraction"]["box_size_pix"] = round((1.5 * particle_diameter / apix) / 2) * 2
 
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
