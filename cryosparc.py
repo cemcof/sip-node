@@ -76,12 +76,13 @@ class CryosparcWrapper(StateObj):
         }
 
         # Gain ref 
-        try:
-            gain_ref = self.em_handler.convert_gain_reference()
-            workflow["gainref_path"] = str(self.raw_data_dir / gain_ref)
-        except Exception as e:
-            self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
-            raise
+        if movie_info[2]:
+            try:
+                gain_ref = self.em_handler.convert_gain_reference(movie_info[2])
+                workflow["gainref_path"] = str(self.raw_data_dir / gain_ref)
+            except ValueError as e:
+                self.exp_engine.logger.error(f"Error during gain reference conversion: {e}")
+                raise
 
         # Use metadata to compute dose per stack (frame dose times number of frames)
         try:
