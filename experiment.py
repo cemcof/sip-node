@@ -14,7 +14,7 @@ import enum
 import uuid
 import inspect, tempfile
 from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, list_directory
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, list_directory
 
 
 class JobState(enum.Enum):
@@ -202,6 +202,13 @@ class ExperimentStorageWrapper:
     @property
     def keep_source_files(self):
         return self._exp_data["KeepSourceFiles"]
+    
+    def get_combined_raw_datarules(self, raw_rules):
+        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=TransferAction.MOVE, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
+        # If keeping files on the instrument is requested, use copy action on all, otherwise leave default configured values
+        if self.keep_source_files:
+            for r in raw_rules:
+                r.action = TransferAction.COPY
     
     @property
     def state(self):
@@ -466,7 +473,7 @@ class ExperimentStorageEngine:
         raise NotImplementedError()
     
 
-    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, skip_if_exists=True):
+    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, condition: TransferCondition = TransferCondition.IF_MISSING):
         """ Put file from file system to the storage """
         raise NotImplementedError()
     
@@ -486,10 +493,12 @@ class ExperimentStorageEngine:
         source_path = pathlib.Path(source_path)
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
-        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True) for p in self.exp.storage.source_patterns])
-        return self.upload(source_path, raw_rules, session_name="raw", keep_source_files=self.exp.storage.keep_source_files)
+        raw_rules = self.exp.storage.get_combined_raw_datarules(raw_rules)
+        
+            
+        return self.upload(source_path, raw_rules, session_name="raw")
 
-    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, keep_source_files=True, log=True):
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, log=True):
         def sniff_consumer(source_path: pathlib.Path, data_rule: DataRule):
             try:
                 relative_target = data_rule.translate_to_target(source_path.relative_to(source))
@@ -498,12 +507,12 @@ class ExperimentStorageEngine:
                 # print("UP SKIPCHECK", source_path, absolute_target)
                 if absolute_target is not None and absolute_target == source_path:
                     return
-                put_result = self.put_file(relative_target, source_path, skip_if_exists=data_rule.skip_if_exists)
+                put_result = self.put_file(relative_target, source_path, condition=data_rule.condition)
                 if put_result:
                     tdelta, fsize = put_result
                     if log:
                         self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
-                    if not keep_source_files:
+                    if data_rule.action == TransferAction.MOVE:
                         try:
                             source_path.unlink()
                         except Exception as e: 
@@ -532,10 +541,10 @@ class ExperimentStorageEngine:
         sniffer = DataRulesSniffer(self.glob, data_rules, download_consumer, tmp_file)
         return sniffer.sniff_and_consume()
     
-    def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, move=False):
+    def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, transfer_action: TransferAction=TransferAction.COPY):
         """ Transfer data from this storage to another """
         if data_rules is None:
-            data_rules = DataRulesWrapper([DataRule("**/*", ["all"], keep_tree=True)])
+            data_rules = DataRulesWrapper([DataRule("**/*", ["all"], keep_tree=True, condition=TransferCondition.ALWAYS)])
 
         buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.exp.secondary_id}.dat"
 
@@ -546,11 +555,11 @@ class ExperimentStorageEngine:
             if source_abs_path is None:
                 # We do not have access to the file directly in filesystem - need to use buffer file 
                 self.get_file(source_path_relative, buffer_file)
-                target.put_file(target_rel_path, buffer_file, skip_if_exists=data_rule.skip_if_exists)
+                target.put_file(target_rel_path, buffer_file, condition=data_rule.condition)
             else:
-                target.put_file(target_rel_path, source_abs_path, skip_if_exists=data_rule.skip_if_exists)
+                target.put_file(target_rel_path, source_abs_path, condition=data_rule.condition)
                 
-            if move:
+            if transfer_action == TransferAction.MOVE:
                 self.del_file(source_path_relative)
         
         tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
@@ -574,7 +583,7 @@ class ExperimentStorageEngine:
         return dw_result, errs
     
     def upload_processed(self, source: pathlib.Path, target: pathlib.Path):
-        dr = DataRule('**/*.*', "processed", target=target, keep_tree=True, skip_if_exists=False)
+        dr = DataRule('**/*.*', "processed", target=target, keep_tree=True, condition=TransferCondition.IF_NEWER)
         up_result, errs = self.upload(source, DataRulesWrapper([dr]), session_name="cs_processed_upload")
         return up_result, errs
     

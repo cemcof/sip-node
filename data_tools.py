@@ -1,6 +1,7 @@
 """ Tools and utilities for sniffing files, transfering files or continually reading files while writing to them from another process """
 
 import datetime
+from enum import Enum
 import logging
 import os, sys
 import pathlib
@@ -14,14 +15,32 @@ from common import as_list
 import functools
 
 
+class TransferAction(Enum):
+    COPY = "copy"
+    MOVE = "move"
 
+class TransferCondition(Enum):
+    IF_MISSING = "if_missing"
+    IF_NEWER = "if_newer"
+    ALWAYS = "always"
+    # IF_DIFFERENT = "IfDifferent"
+    
 class DataRule:
-    def __init__(self, patterns: typing.Union[typing.List[str], str], tags: typing.Union[typing.List[str], str], target: str = None, keep_tree: bool = False, subfiles=True, skip_if_exists=False) -> None:
+    def __init__(self, 
+                 patterns: typing.Union[typing.List[str], str], 
+                 tags: typing.Union[typing.List[str], str], 
+                 target: str = None, 
+                 keep_tree: bool = False, 
+                 subfiles=True, 
+                 action: typing.Union[str, TransferAction] = TransferAction.COPY,
+                 condition: typing.Union[str, TransferCondition] = TransferCondition.IF_MISSING,
+                ) -> None:
         self.patterns = as_list(patterns)
         self.tags = as_list(tags)
         self.target = pathlib.Path(target) if target else None
         self.keep_tree = keep_tree
-        self.skip_if_exists = skip_if_exists
+        self.action = TransferAction(action)
+        self.condition = TransferCondition(condition)
         self.subfiles = subfiles
 
     def translate_to_target(self, path_relative: pathlib.Path):
@@ -44,7 +63,7 @@ class DataRule:
         return [str(target_base / pathlib.Path(p).name) for p in self.patterns]
     
     def __str__(self) -> str:
-        return f"DataRule({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.subfiles}, {self.skip_if_exists})"
+        return f"DataRule({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.subfiles}, {self.action}, {self.condition})"
 
 class DataRulesWrapper:
     def __init__(self, data_rules: typing.Union[list, DataRule, dict]) -> None:

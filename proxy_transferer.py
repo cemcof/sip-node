@@ -45,7 +45,7 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
         # Add rules for source patterns
-        data_rules = data_tools.DataRulesWrapper(data_rules.data_rules + [data_tools.DataRule(p, ["raw"], ".", True) for p in exp.storage.source_patterns])
+        data_rules = exp.storage.get_combined_raw_datarules(data_rules)
 
         source_dir = exp.storage.source_directory
         def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRule):
@@ -55,9 +55,9 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
                 return
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
-            if not exp.storage.keep_source_files:
+            if data_rule.action == data_tools.TransferAction.MOVE:
                 source_path.unlink()
-            self.logger.info(f"PROXY COPY: {source_path} to {target}")
+            self.logger.info(f"PROXY: {source_path} to {target}")
 
         sniffer = data_tools.DataRulesSniffer(source_dir, data_rules, proxy_transfer_handler)
         sniffer.sniff_and_consume()

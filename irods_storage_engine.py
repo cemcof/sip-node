@@ -1,6 +1,7 @@
 
 import pathlib, yaml, datetime, logging
 import common
+from data_tools import TransferCondition
 import data_tools
 from experiment import ExperimentWrapper
 import logger_db_api
@@ -205,10 +206,10 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             self.irods_collection.ensure_exists(self.irods_collection.collection_path / path_relative.parent)
             self.irods_collection.write_file(path_relative, content)
     
-    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, skip_if_exists=True):
+    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, condition: TransferCondition = TransferCondition.IF_MISSING):
         if (self.fs_underlying_storage):
-            return self.fs_underlying_storage.put_file(path_relative, src_file, skip_if_exists)
-        return self.irods_collection.ensure_file(src_file, path_relative, replace=not skip_if_exists)
+            return self.fs_underlying_storage.put_file(path_relative, src_file, condition)
+        return self.irods_collection.ensure_file(src_file, path_relative, replace=condition != TransferCondition.IF_MISSING)
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         if (self.fs_underlying_storage):

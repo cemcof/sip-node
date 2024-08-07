@@ -78,10 +78,15 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content) if isinstance(content, str) else target.write_bytes(content)
     
-    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, skip_if_exists=True):
-        if skip_if_exists and self.file_exists(path_relative):
+    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, condition=data_tools.TransferCondition.IF_MISSING):
+        if condition == data_tools.TransferCondition.IF_MISSING and self.file_exists(path_relative):
             return False
+        
         target = self.resolve_target_location(path_relative)
+
+        if condition == data_tools.TransferCondition.IF_NEWER and target.exists() and target.stat().st_mtime >= src_file.stat().st_mtime:
+            return False
+            
         # Ensure target directory for the file exists
         target.parent.mkdir(parents=True, exist_ok=True)
         timestart = time.time()

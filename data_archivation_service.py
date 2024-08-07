@@ -1,6 +1,7 @@
 """ Service responsible for cheking whether data should be archived, if so, moves it from one storage to another. """
 import pathlib
 import experiment, tempfile
+from data_tools import TransferAction
 
 class DataArchivationService(experiment.ExperimentModuleBase):
     def provide_experiments(self):
@@ -25,7 +26,7 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         try:
             print("ARCH", exp_engine.exp.secondary_id)
             archive_data_rules = exp_engine.data_rules.with_tags("archive")
-            transfers, errs = exp_engine.transfer_to(exp_target_storage, archive_data_rules, move=True, session_name=f"archivation_to_{exp_target_storage_engine.replace('/', '_')}")
+            transfers, errs = exp_engine.transfer_to(exp_target_storage, archive_data_rules, transfer_action=TransferAction.MOVE, session_name=f"archivation_to_{exp_target_storage_engine.replace('/', '_')}")
             if errs:
                 raise Exception(f"Errors during archivation: {errs}")
         except Exception as e:
