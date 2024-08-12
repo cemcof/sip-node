@@ -36,7 +36,7 @@ def stringify_date(dt: datetime.datetime):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def parse_timedelta(timedelta: str):
+def parse_timedelta(timedelta: str) -> datetime.timedelta:
     # TODO - fix - incorrect regex
     pattern = r'(?:(?P<days>\d+)\.)?(?:(?P<hours>\d+):)?(?:(?P<minutes>\d+):)?(?P<seconds>\d+\.?\d*)'
     match = re.match(pattern, timedelta)

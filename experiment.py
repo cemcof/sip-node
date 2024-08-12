@@ -178,6 +178,10 @@ class ExperimentStorageWrapper:
     def engine(self):
         return self._exp_data["StorageEngine"]
     
+    @property 
+    def dt_last_updated(self):
+        return common.parse_date(self._exp_data["DtLastUpdated"])
+    
     @property
     def archive(self):
         return self._exp_data["Archive"]
@@ -278,6 +282,10 @@ class ExperimentWrapper:
         if (self.state != value):
             self.exp_api.change_state(value)
             self.reload()
+
+    def to_state_from(self, from_state, to_state):
+        self.exp_api.change_state
+
 
     @property
     def storage(self):
@@ -670,6 +678,9 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
 
     def provide_experiments(self):
         return ExperimentsApi(self._api_session).get_active_experiments()
+    
+    def get_experiment_config(self, exp: ExperimentWrapper):
+        return self.module_config.lims_config.get_experiment_config(exp.instrument, exp.technique)
         
 
 class ExpFileBrowser(configuration.LimsNodeModule):

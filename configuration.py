@@ -27,11 +27,14 @@ class JobConfigWrapper:
     @property
     def data_rules(self):
         return DataRulesWrapper(self._data["DataRules"] if "DataRules" in self._data else [])
-    
-    @property 
-    def raw_data_rules(self):
-        drls = self.data_rules
-        [data_tools.DataRule(p, ["raw"], ".", True) for p in exp.storage.source_patterns]
+
+    @property
+    def idle_timeout(self):
+        tdelta = self._data.get("IdleTimeout", None)
+        if not tdelta:
+            return None
+        
+        return common.parse_timedelta(tdelta)
     
     def __getitem__(self, item):
         return self._data[item]

@@ -1,3 +1,4 @@
+import datetime
 import experiment, re
 from experiment import ExperimentStorageEngine
 
@@ -53,15 +54,28 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
             exp_engine.exp.exp_api.patch_experiment(patch)
             exp_running()
 
+        def _handle_auto_stop():
+            idle_timeout = self.get_experiment_config(exp_engine.exp).idle_timeout  
+            last_update = exp_engine.exp.storage.dt_last_updated
+            if idle_timeout and last_update and (datetime.datetime.now() - last_update) > idle_timeout:
+                exp_engine.exp.state = experiment.JobState.STOP_REQUESTED
+
         def exp_running():
             exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.storage.source_directory, exp_engine.exp.secondary_id)
             exp_engine.sniff_and_process_metafile(exp_data_source)
-            exp_engine.upload_raw(exp_data_source)
+
+            # dt_upload_start = datetime.
+            ups, errs = exp_engine.upload_raw(exp_data_source)
+            if ups: 
+                exp_engine.exp.storage.dt_last_updated = datetime.datetime.now()
+
+            _handle_auto_stop()
+
 
         def exp_finish():
             # Called once when experiment is finishing, send email
             if exp_engine.exp.notify_user:
-                email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["JobFinish"]
+                email_conf = self.get_experiment_config(exp_engine.exp)["JobFinish"]
                 exp_engine.exp.exp_api.send_email(email_conf)
             exp_engine.exp.exp_api.patch_experiment({
                 "Storage": {"State": experiment.StorageState.IDLE.value},
