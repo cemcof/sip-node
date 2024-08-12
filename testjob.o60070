@@ -1,0 +1,126 @@
+/cemcofsw/em/miniconda3/3.py38_4.9.2/envs/scipion3/bin/python3
+SHELL=/bin/bash
+SINGULARITY_CACHEDIR=/scratch/emcf/job_60070.crybox-pro.ceitec.muni.cz
+COLORTERM=truecolor
+SCRATCHDIR=/scratch/emcf/job_60070.crybox-pro.ceitec.muni.cz
+TERM_PROGRAM_VERSION=1.90.0
+__MODULES_LMALTNAME=metabase/1&as|metabase/default&as|metabase/latest:metabase/1&as|metabase/default&as|metabase/latest:scipion/3.0&scipion/default&scipion:metabase/1&as|metabase/default&as|metabase/latest
+TORQUE_RESC_TOTAL_WALLTIME=259200
+HISTSIZE=10000000
+TORQUE_RESC_TOTAL_PROCS=4
+PBS_TASKNUM=1
+TORQUE_RESC_SCRATCH_VOLUME=1073741824000
+PBS_JOBID=60070.crybox-pro.ceitec.muni.cz
+HISTTIMEFORMAT=%Y-%m-%d %H:%M:%S 
+PBS_O_PATH=/cemcofsw/em/miniconda3/3.py38_4.9.2/envs/scipion3/bin:/cemcofsw/em/miniconda3/3.py38_4.9.2/condabin:/cemcofsw/em/miniconda3/3.py38_4.9.2/envs/ceitec-lims/bin:/home/emcf/.local/bin:/home/emcf/bin:/usr/heimdal/bin:/usr/heimdal/sbin:/cvmfs/software.metacentrum.cz/modulefiles/5.1.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/software/meta-utils/public:/usr/bin:/opt/puppetlabs/bin
+PBS_NODEFILE=/var/spool/pbs/aux/60070.crybox-pro.ceitec.muni.cz
+PBS_O_SYSTEM=Linux
+PBS_ENVIRONMENT=PBS_BATCH
+KRB5CCNAME=FILE:/tmp/krb5cc_pbsjob_60070.crybox-pro.ceitec.muni.cz
+PWD=/home/emcf
+TORQUE_RESC_TOTAL_MEM=66571993088
+PBS_O_QUEUE=default
+LOGNAME=emcf
+PBS_JOBCOOKIE=641E85B749516FAD59E677F504EEEF59
+MODULES_AVAIL_INDEPTH=0
+XDG_SESSION_TYPE=tty
+MODULESHOME=/cvmfs/software.metacentrum.cz/modulefiles/5.1.0
+MANPATH=/software/modules/current/Modules/3.2.10/share/man:/cvmfs/software.metacentrum.cz/modulefiles/5.1.0/share/man::/usr/heimdal/man:/usr/share/man:/opt/puppetlabs/puppet/share/man:/usr/share/man:/usr/share/man
+PBS_O_HOME=/home/emcf
+PBS_MOMPORT=15003
+VSCODE_GIT_ASKPASS_NODE=/home/emcf/.vscode-server/cli/servers/Stable-89de5a8d4d6205e5b11647eb6a74844ca23d2573/server/node
+TORQUE_RESC_PROC=4
+PBS_JOBNAME=testjob
+MOTD_SHOWN=pam
+PBS_NODENUM=0
+__MODULES_SHARE_MANPATH=:1:/software/modules/current/Modules/3.2.10/share/man:3:/usr/heimdal/man:3
+HOME=/home/emcf
+PBS_RESC_TOTAL_MEM=66571993088
+LANG=en_US.UTF-8
+__MODULES_LMCONFLICT=scipion/3.0&scipion
+SCRATCH_TYPE=local
+SCRATCH=/scratch/emcf/job_60070.crybox-pro.ceitec.muni.cz
+NCPUS=1
+PBS_JOBDIR=/home/emcf
+CUDA_DEVICE_ORDER=PCI_BUS_ID
+SSL_CERT_DIR=/usr/lib/ssl/certs
+TORQUE_RESC_MEM=66571993088
+TMPDIR=/var/tmp/pbs.60070.crybox-pro.ceitec.muni.cz
+GIT_ASKPASS=/home/emcf/.vscode-server/cli/servers/Stable-89de5a8d4d6205e5b11647eb6a74844ca23d2573/server/extensions/git/dist/askpass.sh
+PBS_O_LANG=en_US.UTF-8
+SSH_CONNECTION=147.251.159.99 60097 147.251.154.3 22
+PBS_O_LOGNAME=emcf
+SINGULARITY_TMPDIR=/scratch/emcf/job_60070.crybox-pro.ceitec.muni.cz
+PBS_RESC_TOTAL_SCRATCH_VOLUME=1073741824000
+PBS_RESC_SCRATCH_VOLUME=1073741824000
+VSCODE_GIT_ASKPASS_EXTRA_ARGS=
+CUDA_VISIBLE_DEVICES=GPU-a33e87bc-688c-a310-8d0b-71e6e4a96212,GPU-152749bc-21b8-3a00-3a6d-cf4590a91070
+PBS_QUEUE=q_5d
+XDG_SESSION_CLASS=user
+PBS_NUM_NODES=1
+TERM=xterm-256color
+USER=emcf
+PBS_NCPUS=4
+VSCODE_GIT_IPC_HANDLE=/run/user/3957/vscode-git-71bba1bba7.sock
+ENVIRONMENT=BATCH
+PBS_NGPUS=2
+PBS_RESC_TOTAL_PROCS=4
+PBS_RESC_SCRATCH_LOCAL=1073741824000
+LOADEDMODULES=metabase/1
+PBS_O_HOST=ciisb.ceitec.muni.cz
+SHLVL=5
+SCRATCH_VOLUME=1073741824000
+CELL=ics.muni.cz
+XDG_SESSION_ID=357431
+PBS_RESC_MEM=66571993088
+XDG_RUNTIME_DIR=/run/user/3957
+SSL_CERT_FILE=/usr/lib/ssl/certs/ca-certificates.crt
+SSH_CLIENT=147.251.159.99 60097 22
+OMP_NUM_THREADS=1
+LC_ALL=en_US.UTF-8
+VSCODE_GIT_ASKPASS_MAIN=/home/emcf/.vscode-server/cli/servers/Stable-89de5a8d4d6205e5b11647eb6a74844ca23d2573/server/extensions/git/dist/askpass-main.js
+TORQUE_RESC_TOTAL_SCRATCH_VOLUME=1073741824000
+TORQUE_RESC_SCRATCH_LOCAL=1073741824000
+PBS_RESC_TOTAL_WALLTIME=259200
+PBS_O_SHELL=/bin/bash
+BROWSER=/home/emcf/.vscode-server/cli/servers/Stable-89de5a8d4d6205e5b11647eb6a74844ca23d2573/server/bin/helpers/browser.sh
+PATH=/cemcofsw/em/miniconda3/3.py38_4.9.2/envs/scipion3/bin:/cemcofsw/em/miniconda3/3.py38_4.9.2/condabin:/cemcofsw/em/miniconda3/3.py38_4.9.2/envs/ceitec-lims/bin:/home/emcf/.local/bin:/home/emcf/bin:/usr/heimdal/bin:/usr/heimdal/sbin:/cvmfs/software.metacentrum.cz/modulefiles/5.1.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/software/meta-utils/public:/usr/bin:/opt/puppetlabs/bin
+MODULEPATH=/cemcofsw/modulefiles
+PBS_O_WORKDIR=/home/emcf/sip-node
+_LMFILES_=/packages/run/modules-5/debian11zen/metabase/1
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/3957/bus
+PBS_NUM_PPN=4
+MODULES_CMD=/cvmfs/software.metacentrum.cz/modulefiles/5.1.0/libexec/modulecmd.tcl
+TERM_PROGRAM=vscode
+VSCODE_IPC_HOOK_CLI=/run/user/3957/vscode-ipc-456a1e40-43aa-483e-bd7c-5217f69e8a11.sock
+BASH_FUNC_ml%%=() {  module ml "$@"
+}
+BASH_FUNC_module%%=() {  local _mlredir=0;
+ if [ -n "${MODULES_REDIRECT_OUTPUT+x}" ]; then
+ if [ "$MODULES_REDIRECT_OUTPUT" = '0' ]; then
+ _mlredir=0;
+ else
+ if [ "$MODULES_REDIRECT_OUTPUT" = '1' ]; then
+ _mlredir=1;
+ fi;
+ fi;
+ fi;
+ case " $@ " in 
+ *' --no-redirect '*)
+ _mlredir=0
+ ;;
+ *' --redirect '*)
+ _mlredir=1
+ ;;
+ esac;
+ if [ $_mlredir -eq 0 ]; then
+ _module_raw "$@";
+ else
+ _module_raw "$@" 2>&1;
+ fi
+}
+BASH_FUNC__module_raw%%=() {  eval "$(/cvmfs/software.metacentrum.cz/modulefiles/5.1.0/bin/shtclshbin /cvmfs/software.metacentrum.cz/modulefiles/5.1.0/libexec/modulecmd.tcl bash "$@")";
+ _mlstatus=$?;
+ return $_mlstatus
+}
+_=/usr/bin/env

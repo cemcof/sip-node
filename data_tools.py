@@ -49,13 +49,49 @@ class DataRule:
         return path_relative
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
+        if self.subfiles: 
+            return self._match_files_with_subfiles(files, self.patterns)
+        else:
+            return self._match_files_without_subfiles(files, self.patterns)
+
+    @staticmethod
+    def _match_files_without_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[str]):
         files = list(files)
         for f in files:
-            if any(f.match(p) for p in self.patterns):
+            if any(f.match(p) for p in patterns):
                 yield f
-                if self.subfiles:
-                    subs = filter(lambda x: x.parent == f.parent and x.name.startswith(f.stem) and x.name != f.name, files)
-                    yield from subs
+
+    @staticmethod
+    def _match_files_with_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[str]):
+        """ For performance reasons, we need better algorithm than n^2, start by sorting the files,
+         then iterating them and upon match, search for subfiles near that match, they should be in one sequence thanks to the sorting """
+        files = sorted(files)
+        index = 0   
+        while index < len(files):
+            f = files[index]
+            if any(f.match(p) for p in patterns):
+                yield f
+                # Now search for subfiles - thanks to sorting, they should be in one sequence with the main file
+                start_index, end_index = self._search_subfiles_indices(files, index)
+                for i in range(start_index, end_index + 1):
+                    if i != index:
+                        yield files[i]
+                index = end_index + 1
+            else:
+                index = index + 1
+
+    @staticmethod
+    def _search_subfiles_indices(files: typing.List[pathlib.Path], index: int):
+        # Subfiles are around the given index, find start index and end index, then yeild them
+        start_index = index
+        while start_index > 0 and files[start_index - 1].parent == files[index].parent and files[start_index - 1].name.startswith(files[index].stem):
+            start_index = start_index - 1
+        end_index = index
+        while end_index < len(files - 1) and files[end_index + 1].parent == files[index].parent and files[end_index + 1].name.startswith(files[index].stem):
+            end_index = end_index + 1
+        
+        return start_index, end_index
+
     
     def get_target_patterns(self):
         """ Gets glob pattern through which files for this rule can be searched in the target location """
