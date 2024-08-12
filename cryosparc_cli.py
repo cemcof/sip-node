@@ -106,6 +106,7 @@ if __name__ == "__main__":
     setup_parser.set_defaults(func="create_project")
     setup_parser.add_argument("-p", "--project-path", dest="project_path", type=pathlib.Path, help="Path to the project, last part of this path will be used as a project name/title", required=True)
     setup_parser.add_argument("-c", "--cluster", dest="cluster", help="Computational cluster", required=True)
+    setup_parser.add_argument("-g", "--gpus", dest="gpu_count", help="Number of GPUs", type=int, default=1)
     setup_parser.add_argument("-w", "--workflow-file", dest="workflow", help="Path to the file with JSON workflow for the project, - for stdin", required=True, type=argparse.FileType(encoding='utf-8'))
 
     run_parser = subparsers.add_parser("run")
@@ -145,6 +146,10 @@ if __name__ == "__main__":
     if parsed_main.get("cluster"):
         compute_configuration = {"cluster": parsed_main["cluster"]}
         del parsed_main["cluster"]
+    # GPU count given?
+    if parsed_main.get("gpu_count"):
+        compute_configuration["phase_one_gpus"] = parsed_main["gpu_count"]
+        del parsed_main["gpu_count"]
 
     # Use cryosparc engine to invoke the subcommand
     cryosparc = CryosparcEngine(parsed_main["email"], sys.stdout, compute_configuration)

@@ -34,6 +34,7 @@ class CryosparcWrapper(StateObj):
 
         self.email = config["email"]
         self.cluster = config["computational_cluster"]
+        self.gpu_count = config.get("gpu_count", 1)
         self.em_handler = em_tools
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
@@ -162,6 +163,7 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             return up_result
 
         def running():
+            print("RuNNNNNN")
             # Fetch new data from storage -> processing project
             dw_result, errs = exp_engine.download_raw(cw.raw_data_dir)
 
