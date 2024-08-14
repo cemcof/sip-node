@@ -10,6 +10,7 @@ import processing_tools
 import data_tools
 import fs_storage_engine
 import common
+from cryosparc.reporting import CryosparcReport
 from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
 
 class CryosparcWrapper(StateObj):
@@ -22,7 +23,7 @@ class CryosparcWrapper(StateObj):
         self.exp = exp_engine.exp
         self.config = config
         self.python_exec = config.get("python_exec", "python3")
-        self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc_cli.py")
+        self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc/cli.py")
         self.cm_path = config["cm_path"]
 
         target_loc = self.exp_engine.resolve_target_location()
@@ -161,6 +162,18 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         def _filter_relevant_upload_results(up_result: list):
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
+        
+        def _create_and_submit_report():
+            report = CryosparcReport(cw.project_path)
+            try:
+                report_path = report.create_report()
+                with open(report_path, "rb") as stream:
+                    # stream = TextIOWrapper(f) # TODO - how
+                    exp_engine.exp.exp_api.upload_document_files(exp_engine.exp.processing.result_document_id, ("Cryosparc result report", stream, "text/pdf"))
+            except Exception as e:
+                self.exp_engine.logger.error(f"Error during report creation or submission: {e}")
+                return
+
 
         def running():
             print("RuNNNNNN")
@@ -179,6 +192,9 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             if up_result or not exp_engine.exp.processing.last_update:
                 # Update last processing change time 
                 exp_engine.exp.processing.last_update = now_utc
+
+            # Report processing results 
+            _create_and_submit_report()
 
             # Check if we should complete the processing
             timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
