@@ -135,7 +135,19 @@ class CryosparcWrapper(StateObj):
 
         self._invoke_cryosparc_cli("stop", args, stdin="")
         self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
+        self._create_and_submit_report()
         self.exp.processing.state = ProcessingState.FINALIZING
+
+    def _create_and_submit_report(self):
+        report = CryosparcReport(self.project_path)
+        try:
+            report_path = report.create_report()
+            with open(report_path, "rb") as stream:
+                # stream = TextIOWrapper(f) # TODO - how
+                self.exp.exp_api.upload_document_files(self.exp.processing.result_document_id, ("Cryosparc result report", stream, "text/pdf"))
+        except Exception as e:
+            self.exp_engine.logger.error(f"Error during report creation or submission: {e}")
+            raise
     
     def get_state(self):
         return self.exp.processing.state
@@ -162,28 +174,13 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         def _filter_relevant_upload_results(up_result: list):
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
-        
-        def _create_and_submit_report():
-            report = CryosparcReport(cw.project_path)
-            try:
-                report_path = report.create_report()
-                with open(report_path, "rb") as stream:
-                    # stream = TextIOWrapper(f) # TODO - how
-                    exp_engine.exp.exp_api.upload_document_files(exp_engine.exp.processing.result_document_id, ("Cryosparc result report", stream, "text/pdf"))
-            except Exception as e:
-                self.exp_engine.logger.error(f"Error during report creation or submission: {e}")
-                return
-
 
         def running():
-            print("RuNNNNNN")
             # Fetch new data from storage -> processing project
             dw_result, errs = exp_engine.download_raw(cw.raw_data_dir)
 
             # Return new data from processing project -> storage
             up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
-            print("RUN UP", up_result)
-
             up_result = _filter_relevant_upload_results(up_result)
 
             # Check if the processing is done
@@ -192,9 +189,6 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             if up_result or not exp_engine.exp.processing.last_update:
                 # Update last processing change time 
                 exp_engine.exp.processing.last_update = now_utc
-
-            # Report processing results 
-            _create_and_submit_report()
 
             # Check if we should complete the processing
             timeout_delta = common.parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))

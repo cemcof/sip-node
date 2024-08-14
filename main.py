@@ -137,7 +137,8 @@ while True:
             continue
 
         # This action is not running - start it
-        module_name, class_name = conf["target"].split(".")
+        target_spl = conf["target"].split(".")
+        module_name, class_name = ".".join(target_spl[:-1]), target_spl[-1]
         # Import and configure the module, if not yet done
         if module_name not in modules_dict:
             module = importlib.import_module(module_name)
