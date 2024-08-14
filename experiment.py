@@ -180,8 +180,14 @@ class ExperimentStorageWrapper:
     
     @property 
     def dt_last_updated(self):
-        return common.parse_date(self._exp_data["DtLastUpdated"])
+        return common.parse_date(self._exp_data["DtLastUpdate"])
     
+    @dt_last_updated.setter
+    def dt_last_updated(self, value: datetime.datetime):
+        strd = common.stringify_date(value)
+        self.exp_api.patch_experiment({"Storage": {"DtLastUpdate": strd}})
+        self._exp_data["DtLastUpdate"] = strd
+
     @property
     def archive(self):
         return self._exp_data["Archive"]

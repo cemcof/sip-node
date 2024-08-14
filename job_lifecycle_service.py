@@ -57,7 +57,7 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
         def _handle_auto_stop():
             idle_timeout = self.get_experiment_config(exp_engine.exp).idle_timeout  
             last_update = exp_engine.exp.storage.dt_last_updated
-            if idle_timeout and last_update and (datetime.datetime.now() - last_update) > idle_timeout:
+            if idle_timeout and last_update and (datetime.datetime.now(datetime.timezone.utc) - last_update) > idle_timeout:
                 exp_engine.exp.state = experiment.JobState.STOP_REQUESTED
 
         def exp_running():
@@ -66,7 +66,7 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
 
             # dt_upload_start = datetime.
             ups, errs = exp_engine.upload_raw(exp_data_source)
-            if ups: 
+            if ups or errs or (exp_engine.exp.storage.dt_last_updated is None): 
                 exp_engine.exp.storage.dt_last_updated = datetime.datetime.now()
 
             _handle_auto_stop()

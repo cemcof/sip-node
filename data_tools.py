@@ -72,7 +72,7 @@ class DataRule:
             if any(f.match(p) for p in patterns):
                 yield f
                 # Now search for subfiles - thanks to sorting, they should be in one sequence with the main file
-                start_index, end_index = self._search_subfiles_indices(files, index)
+                start_index, end_index = DataRule._search_subfiles_indices(files, index)
                 for i in range(start_index, end_index + 1):
                     if i != index:
                         yield files[i]
@@ -87,7 +87,7 @@ class DataRule:
         while start_index > 0 and files[start_index - 1].parent == files[index].parent and files[start_index - 1].name.startswith(files[index].stem):
             start_index = start_index - 1
         end_index = index
-        while end_index < len(files - 1) and files[end_index + 1].parent == files[index].parent and files[end_index + 1].name.startswith(files[index].stem):
+        while end_index < len(files) - 1 and files[end_index + 1].parent == files[index].parent and files[end_index + 1].name.startswith(files[index].stem):
             end_index = end_index + 1
         
         return start_index, end_index
