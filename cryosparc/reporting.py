@@ -1,4 +1,3 @@
-import os
 import datetime
 import numpy as np
 import bson
@@ -16,6 +15,7 @@ from pathlib import Path
 import csv
 import numpy as np
 import pathlib
+import sys
 from typing import Union
 
 class CryosparcReport:
@@ -25,6 +25,7 @@ class CryosparcReport:
     
     def __init__(self, 
                  cs_project_path: Union[str, pathlib.Path], # '/storage/brno14-ceitec/shared/cemcof/internal/DATA_24/240729_70_rimM_KO_tilt_0270C74E/cryosparc_240729_70_rimM_KO_tilt_0270C74E',
+                 working_dir=None,
                  bsonFile='S1/exposures.bson',
                  output_pdf_file='spa_report.pdf',
                  project_report_file='.project_report.dat',
@@ -32,6 +33,7 @@ class CryosparcReport:
                  movies_local_dir='S1/import_movies',
                  motion_correction_trajectories_dir='S1/motioncorrected'):
         self.cs_project_path = Path(cs_project_path)
+        self.working_dir = working_dir or self.cs_project_path / "spa_report"
         self.bsonFile = bsonFile
         self.output_pdf_file = output_pdf_file
         self.project_report_file = project_report_file
@@ -132,7 +134,7 @@ class CryosparcReport:
             fig_list.append(self.timePlot(i, data4fig_dict['creation_time'], data4fig_dict[i]))
             fig_list.append(self.histPlot(i, data4fig_dict[i]))
 
-        output_pdf_path = self.cs_project_path / self.output_pdf_file
+        output_pdf_path = self.working_dir / self.output_pdf_file
         self.create_pdf_report(output_pdf_path, len(data4fig_dict['name']), fig_list)
         return output_pdf_path
 
@@ -175,9 +177,8 @@ class CryosparcReport:
         # Build the PDF document
         doc.build(story)
 
-    @staticmethod
-    def timePlot(title,time,vals):
-        filename = '%s_time.png' % title
+    def timePlot(self, title, time, vals):
+        filename = self.working_dir / ('%s_time.png' % title)
         xVal = [datetime.datetime.fromtimestamp(float(i)).strftime('%H:%M:%S') for i in time]
         vals = [float(i) for i in vals]
         if len(xVal) > 1500:
@@ -196,9 +197,8 @@ class CryosparcReport:
 
         return filename
 
-    @staticmethod
-    def histPlot(title,vals):
-        filename = '%s_hist.png' % title
+    def histPlot(self, title, vals):
+        filename = self.working_dir / '%s_hist.png' % title
         vals = [float(i) for i in vals]
         bins = 20
         if len(vals) > 1500:
@@ -224,9 +224,8 @@ class CryosparcReport:
 
         return filename
 
-    @staticmethod
-    def astigPlot(astig, astigAngle):
-        filename = 'astig_plot.png'
+    def astigPlot(self, astig, astigAngle):
+        filename = self.working_dir / 'astig_plot.png'
         a = [float(i) for i in astig]
         aa = [float(i) for i in astigAngle]
         thr = 1000.0
@@ -246,106 +245,6 @@ class CryosparcReport:
         return filename
 
 
-
-# try:
-#     os.stat(os.path.join(cs_project_path,csv_data_file))
-# except:
-#     with open(os.path.join(cs_project_path,csv_data_file), mode='w', newline='') as file:
-#         writer = csv.DictWriter(file, fieldnames=csv_data_keys)
-#         # Write the header (column names)
-#         writer.writeheader()
-
-# try:
-#     os.path.isfile(os.path.join(cs_project_path,project_report_file))
-#     with open(os.path.join(cs_project_path,project_report_file),'r') as prf:
-#         ls = prf.readlines()[-1].split()
-#         processed_files = int(ls[0])
-# except:
-#     processed_files = 0
-
-# # List all files in the directory
-# files = os.listdir(os.path.join(cs_project_path,movies_local_dir))[processed_files:]
-# files_full_path = [os.path.join(cs_project_path,movies_local_dir,f) for f in files]
-# sorted_files = sorted(files_full_path, key=os.path.getmtime)
-# to_do_files = sorted_files[processed_files:]
-
-# # read bson file and do initial sorting
-# with open(os.path.join(cs_project_path,bsonFile), 'rb') as file:
-#     bson_data = bson.decode_all(file.read())
-
-# bson_id_according_to_motion = {}
-# for b in range(len(bson_data[0]['exposures'])):
-#     bson_id_according_to_motion[bson_data[0]['exposures'][b]['groups']['exposure']['rigid_motion']['path'][0]] = b
-
-# movie_info = {key:[] for key in csv_data_keys}
-
-# for movie in to_do_files:
-#     name = os.path.split(movie)[1]
-#     moviePref = '.'.join(name.split('.')[:-1])
-#     if os.path.isfile(os.path.join(cs_project_path,motion_correction_trajectories_dir,moviePref+'_traj.npy')):
-#         movie_info['name'].append(name)
-#         #movie_info['creation_time'].append(datetime.datetime.fromtimestamp(os.path.getmtime(movie)).strftime('%Y-%m-%d %H:%M:%S'))
-#         movie_info['creation_time'].append(os.path.getmtime(movie))
-#         drift_data_file_local_path = os.path.join(motion_correction_trajectories_dir,moviePref+'_traj.npy')
-#         drift_data_file = os.path.join(cs_project_path,drift_data_file_local_path)
-#         drift_data = np.load(drift_data_file)
-#         motion_vectors = [((drift_data[0][i][0]-drift_data[0][i+1][0])**2+(drift_data[0][i][1]-drift_data[0][i+1][1])**2)**0.5 for i in range(drift_data.shape[1]-1)]
-#         movie_info['total_motion'].append(np.sum(motion_vectors))
-#         movie_info['early_motion'].append(np.sum(motion_vectors[0:4]))
-#         movie_info['late_motion'].append(np.sum(motion_vectors[4:]))
-#         cur_bson_dict = bson_data[0]['exposures'][bson_id_according_to_motion[drift_data_file_local_path]]['groups']
-#         movie_info['defocus'].append(min(cur_bson_dict['exposure']['ctf']['df1_A'][0],cur_bson_dict['exposure']['ctf']['df2_A'][0]))
-#         movie_info['astigmatism'].append(np.abs(cur_bson_dict['exposure']['ctf']['df1_A'][0]-cur_bson_dict['exposure']['ctf']['df2_A'][0]))
-#         movie_info['astigmatism_angle'].append(180.*cur_bson_dict['exposure']['ctf']['df_angle_rad'][0]/np.pi)
-#         movie_info['resolution_CTF'].append(cur_bson_dict['exposure']['ctf']['ctf_fit_to_A'][0])
-#         movie_info['relative_ice_thickness'].append(cur_bson_dict['exposure']['ctf_stats']['ice_thickness_rel'][0])
-#         movie_info['picked_particles'].append(cur_bson_dict['particle_blob']['count'])
-
-# with open(os.path.join(cs_project_path,project_report_file),'a') as oF:
-#     oF.write('%d' % int(len(movie_info['name'])+processed_files))
-
-# # Open the existing CSV file in append mode
-# with open(os.path.join(cs_project_path,csv_data_file), mode='a', newline='') as file:
-#     writer = csv.DictWriter(file, fieldnames=movie_info.keys())
-    
-#     for i in range(len(next(iter(movie_info.values())))):  # Iterate based on the length of any column
-#         row = {key: movie_info[key][i] for key in movie_info}
-#         writer.writerow(row)
-
-# data4fig_dict = {}
-
-# # Read the CSV file
-# with open(os.path.join(cs_project_path,csv_data_file), mode='r') as file:
-#     reader = csv.DictReader(file)
-
-#     # Initialize keys in the dictionary based on the header
-#     for field in reader.fieldnames:
-#         data4fig_dict[field] = []
-
-#     # Populate the dictionary with data from each row
-#     for row in reader:
-#         for key in reader.fieldnames:
-#             data4fig_dict[key].append(row[key])
-
-# fig_list = []
-# fig_list.append(astigPlot(data4fig_dict['astigmatism'],data4fig_dict['astigmatism_angle']))
-# fig_list.append(histPlot('astigmatism',data4fig_dict['astigmatism']))
-
-
-# for i in csv_data_keys:
-#     if i in ['name','creation_time','astigmatism','astigmatism_angle']:
-#         pass
-#     else:
-#         fig_list.append(timePlot(i,data4fig_dict['creation_time'],data4fig_dict[i]))
-#         fig_list.append(histPlot(i,data4fig_dict[i]))
-
-# create_pdf_report(os.path.join(cs_project_path,output_pdf_file),len(data4fig_dict['name']),fig_list)
-
-
-
-
-
-
-
-
-
+if __name__ == '__main__':
+    report = CryosparcReport(cs_project_path=sys.argv[1])
+    report.create_report()

@@ -59,7 +59,8 @@ class CryosparcWrapper(StateObj):
         args = {
             "-p": str(self.project_path),
             "-c": self.cluster,
-            "-w": "-"
+            "-w": "-",
+            "-g": str(self.gpu_count)
         }
 
         # Prepare workflow JSON
