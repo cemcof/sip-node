@@ -18,6 +18,10 @@ import pathlib
 import sys
 from typing import Union
 
+import logging
+
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
 class CryosparcReport:
     csv_data_keys = ['name', 'creation_time', 'total_motion', 'early_motion',
                  'late_motion','defocus','astigmatism','astigmatism_angle',
@@ -34,6 +38,7 @@ class CryosparcReport:
                  motion_correction_trajectories_dir='S1/motioncorrected'):
         self.cs_project_path = Path(cs_project_path)
         self.working_dir = working_dir or self.cs_project_path / "spa_report"
+        self.working_dir.mkdir(exist_ok=True)
         self.bsonFile = bsonFile
         self.output_pdf_file = output_pdf_file
         self.project_report_file = project_report_file
@@ -140,7 +145,7 @@ class CryosparcReport:
 
     @staticmethod
     def create_pdf_report(output_filename, processed_imgs, plot_images):
-        doc = SimpleDocTemplate(output_filename, pagesize=letter)
+        doc = SimpleDocTemplate(str(output_filename), pagesize=letter)
         styles = getSampleStyleSheet()
         story = []
 
@@ -198,7 +203,7 @@ class CryosparcReport:
         return filename
 
     def histPlot(self, title, vals):
-        filename = self.working_dir / '%s_hist.png' % title
+        filename = self.working_dir / ('%s_hist.png' % title)
         vals = [float(i) for i in vals]
         bins = 20
         if len(vals) > 1500:

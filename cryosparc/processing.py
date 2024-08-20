@@ -145,7 +145,7 @@ class CryosparcWrapper(StateObj):
             report_path = report.create_report()
             with open(report_path, "rb") as stream:
                 # stream = TextIOWrapper(f) # TODO - how
-                self.exp.exp_api.upload_document_files(self.exp.processing.result_document_id, ("Cryosparc result report", stream, "text/pdf"))
+                self.exp.exp_api.upload_document_files(self.exp.processing.result_document_id, ("Cryosparc result report", stream, "application/pdf"))
         except Exception as e:
             self.exp_engine.logger.error(f"Error during report creation or submission: {e}")
             raise
@@ -162,6 +162,7 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
                 ProcessingState.UNINITIALIZED, 
                        ProcessingState.READY, 
                        ProcessingState.RUNNING,
+                       ProcessingState.STOP_REQUESTED,  
                        ProcessingState.FINALIZING]
             )
         
