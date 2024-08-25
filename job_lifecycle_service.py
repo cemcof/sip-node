@@ -51,6 +51,11 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
                 if rules and proc.engine in rules:
                     patch["Processing"] = {"Node": rules[proc.engine]}
 
+            # Send email about the new experiment
+            if exp_engine.exp.notify_user:
+                email_conf = self.get_experiment_config(exp_engine.exp)["JobStart"]
+                exp_engine.exp.exp_api.send_email(email_conf)
+
             exp_engine.exp.exp_api.patch_experiment(patch)
             exp_running()
 
@@ -73,10 +78,6 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
 
 
         def exp_finish():
-            # Called once when experiment is finishing, send email
-            if exp_engine.exp.notify_user:
-                email_conf = self.get_experiment_config(exp_engine.exp)["JobFinish"]
-                exp_engine.exp.exp_api.send_email(email_conf)
             exp_engine.exp.exp_api.patch_experiment({
                 "Storage": {"State": experiment.StorageState.IDLE.value},
                 "State": experiment.JobState.FINISHED.value
