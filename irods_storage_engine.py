@@ -150,7 +150,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
 
         self.irods_collection = IrodsCollectionWrapper(
             irods_session=iRODSSession(**self.connection_config), 
-            collection_path=self.collection_base / self.exp.secondary_id, # TODO - internal path to exp structure?
+            collection_path=self.collection_base / self.exp.storage.subpath,
             logger=self.logger)
         
         self.fs_underlying_storage = None
@@ -166,8 +166,8 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
                 metadata_target=self.metadata_target)
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
-        if self.mount_point:
-            return self.mount_point / self.get_exp_subpath() / self.exp.secondary_id / (src_relative or "")
+        if self.fs_underlying_storage:
+            return self.fs_underlying_storage.resolve_target_location(src_relative)
         return None
     
     def restore_metadata(self, metadata={}):
@@ -187,7 +187,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def get_access_info(self):
         return {
             "Target": self.irods_collection.irods_session.host, 
-            "Path": str(self.irods_collection.collection_path),
+            "Path": str(self.collection_base),
             "Token": self.irods_collection.generate_ticket()
         }
     

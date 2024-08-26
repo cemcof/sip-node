@@ -46,10 +46,9 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self._link_operator_directory()
 
     def get_access_info(self):
-        target_path = self.server_base_path / self.resolve_target_location().relative_to(self.base_path)
         return {
             "Target": self.server,
-            "Path": str(target_path),
+            "Path": str(self.server_base_path),
             "Token": None
         }
         
@@ -62,7 +61,7 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             return False
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
-        target_path = self.base_path / self.get_exp_subpath()
+        target_path = self.base_path / self.exp.storage.subpath
         return target_path / (src_relative or "")
     
     def file_exists(self, path_relative: pathlib.Path):

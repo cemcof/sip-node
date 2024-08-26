@@ -201,6 +201,10 @@ class ExperimentStorageWrapper:
         return self._exp_data["Path"]
     
     @property
+    def subpath(self):
+        return self._exp_data["SubPath"]    
+    
+    @property
     def token(self):
         return self._exp_data["Token"]
     
@@ -429,18 +433,6 @@ class ExperimentStorageEngine:
     def metadata_exists(self):
         return self.file_exists(self.metadata_target)
     
-    def get_exp_subpath(self): 
-        data_year = self.exp.dt_created.strftime("%y")
-        project_id = self.exp.data_model["ProjectId"]
-        if project_id:
-            project_id = project_id[-7:] # Keep last 7 characters
-            project_acronym, project_name = self.exp.data_model["ProjectAcronym"], self.exp.data_model["ProjectName"]
-            project_pathpart = project_acronym or project_name
-            project_folder = common.to_safe_filename(project_pathpart + "_" + project_id)
-            return pathlib.Path(f"DATA_{data_year}") / project_folder / self.exp.secondary_id
-        else: 
-            return pathlib.Path(f"DATA_{data_year}") / self.exp.secondary_id
-
     def read_metadata(self):
         if not self.metadata_exists():
             return {}
