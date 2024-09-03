@@ -3,7 +3,6 @@
 import datetime
 from enum import Enum
 import logging
-import re
 import os, sys
 import pathlib
 import time
@@ -367,20 +366,30 @@ def map_direntry_from_config(direntry):
     }
 
 def sort_file_items(items: list):
-    def _num_or_none(text):
-        match = re.match(r'\d+', text)
-        if match:
-            try:
-                return int(match.group())
-            except:
-                return None
+    def extract_date_from_string(input_string):
+        # Try parsing with yyyyMMdd format
+        try:
+            date = datetime.strptime(input_string[:8], "%Y%m%d")
+            return date
+        except ValueError:
+            pass
+        
+        # Try parsing with yyMMdd format
+        try:
+            date = datetime.strptime(input_string[:6], "%y%m%d")
+            return date
+        except ValueError:
+            pass
+        
+        # If no valid date is found, return None
         return None
 
+
     # First process and sort these starting by a number, sort them by this number value and then by rest of the name, descnding
-    numbered = sorted(filter(lambda x: _num_or_none(x["Name"]) is not None, items), key=lambda x: (_num_or_none(x["Name"]), x["Name"]), reverse=True)
+    numbered = sorted(filter(lambda x: extract_date_from_string(x["Name"]) is not None, items), key=lambda x: (extract_date_from_string(x["Name"]), x["Name"]), reverse=True)
 
     # Then process and sort these starting by a letter, sort them by name, from A to Z
-    lettered = sorted(filter(lambda x: _num_or_none(x["Name"]) is None, items), key=lambda x: x["Name"])
+    lettered = sorted(filter(lambda x: extract_date_from_string(x["Name"]) is None, items), key=lambda x: x["Name"])
     
     return numbered + lettered
     
