@@ -1,6 +1,6 @@
 """ Tools and utilities for sniffing files, transfering files or continually reading files while writing to them from another process """
 
-import datetime
+from datetime import datetime
 from enum import Enum
 import logging
 import os, sys
