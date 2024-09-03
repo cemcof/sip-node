@@ -1,4 +1,4 @@
 pyyaml
-aiohttp
 pathlib
 psutil
+requests
