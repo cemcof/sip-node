@@ -3,6 +3,7 @@
 import datetime
 from enum import Enum
 import logging
+import re
 import os, sys
 import pathlib
 import time
@@ -366,10 +367,20 @@ def map_direntry_from_config(direntry):
     }
 
 def sort_file_items(items: list):
-    # First process and sort these starting by a number, sort them by modification time, from newest to oldest
-    numbered = sorted(filter(lambda x: x["Name"][0].isdigit(), items), key=lambda x: os.path.getmtime(x["Path"]), reverse=True)
+    def _num_or_none(text):
+        match = re.match(r'\d+', text)
+        if match:
+            try:
+                return int(match.group())
+            except:
+                return None
+        return None
+
+    # First process and sort these starting by a number, sort them by this number value and then by rest of the name, descnding
+    numbered = sorted(filter(lambda x: _num_or_none(x["Name"]) is not None, items), key=lambda x: (_num_or_none(x["Name"]), x["Name"]), reverse=True)
+
     # Then process and sort these starting by a letter, sort them by name, from A to Z
-    lettered = sorted(filter(lambda x: not x["Name"][0].isdigit(), items), key=lambda x: x["Name"])
+    lettered = sorted(filter(lambda x: _num_or_none(x["Name"]) is None, items), key=lambda x: x["Name"])
     
     return numbered + lettered
     
