@@ -72,7 +72,7 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
             # dt_upload_start = datetime.
             ups, errs = exp_engine.upload_raw(exp_data_source)
             if ups or errs or (exp_engine.exp.storage.dt_last_updated is None): 
-                exp_engine.exp.storage.dt_last_updated = datetime.datetime.now()
+                exp_engine.exp.storage.dt_last_updated = datetime.datetime.now(datetime.timezone.utc)
 
             _handle_auto_stop()
 
