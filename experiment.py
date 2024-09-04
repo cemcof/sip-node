@@ -213,6 +213,12 @@ class ExperimentStorageWrapper:
     def source_directory(self):
         return common.path_universal_factory(self._exp_data["SourceDirectory"])
     
+    @source_directory.setter
+    def source_directory(self, value: pathlib.Path):
+        value = str(value) if value else None
+        self.exp_api.patch_experiment({"Storage": {"SourceDirectory": value}})
+        self._exp_data["SourceDirectory"] = value
+    
     @property
     def keep_source_files(self):
         return self._exp_data["KeepSourceFiles"]
@@ -370,8 +376,9 @@ class ExperimentsApi:
     def get_active_experiments(self):
         return self.get_experiments_by_states(exp_state=JobState.ACTIVE)
         
-    def get_experiments(self, queryData={}):
-        result = self._http_session.get("experiments", params=queryData)
+    def get_experiments(self, queryData={},  subpath=None):
+        path = "experiments" if subpath is None else f"experiments/{subpath}"
+        result = self._http_session.get(path, params=queryData)
         expData = result.json()
         return [ExperimentWrapper(self.for_experiment(x["Id"]), x) for x in expData]
 
