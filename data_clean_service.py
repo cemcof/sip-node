@@ -5,7 +5,7 @@ import shutil, common, datetime
 
 class DataCleanService(experiment.ExperimentModuleBase):
     def provide_experiments(self):
-        return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="with_", queryData={""})
+        return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="with_sourcedir")
     
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
 
@@ -32,7 +32,7 @@ class DataCleanService(experiment.ExperimentModuleBase):
         def onerror(func, path, exc_info):
             errs.append((func, path, exc_info))
 
-        shutil.rmtree(source_dir, onerror=onerror)
+        shutil.rmtree(source_dir, onexc=onerror)
 
 
         if errs:
