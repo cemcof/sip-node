@@ -1,20 +1,24 @@
 """ Periodically schedulabe service to clean up source datafolder picked for experiments"""
 import experiment
-from experiment import ExperimentStorageEngine
+from experiment import ExperimentStorageEngine, ExperimentWrapper
 import shutil, common, datetime
+import configuration
 
-class DataCleanService(experiment.ExperimentModuleBase):
+class DataCleanService(configuration.LimsNodeModule):
     def provide_experiments(self):
         return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="with_sourcedir")
     
-    def step_experiment(self, exp_engine: ExperimentStorageEngine):
+    def step(self):
+        for exp in self.provide_experiments():
+            self.step_experiment(exp)
 
-        source_dir = exp_engine.exp.storage.source_directory
+    def step_experiment(self, exp: ExperimentWrapper):
+        source_dir = exp.storage.source_directory
         if not source_dir:
             return
         
         if not source_dir.exists():
-            exp_engine.exp.storage.source_directory = None
+            exp.storage.source_directory = None
             return
         
         # Check if directory was untouched for configured time by checking file with latest modification time
@@ -25,7 +29,7 @@ class DataCleanService(experiment.ExperimentModuleBase):
             return
         
         if bool(self.module_config.get("dry_run", True)):
-            exp_engine.logger.info(f"Would clean up {source_dir}, dry run enabled, skipping.")
+            self.logger.info(f"Would clean up {source_dir}, dry run enabled, skipping.")
             return
         
         errs = []
@@ -37,8 +41,8 @@ class DataCleanService(experiment.ExperimentModuleBase):
 
         if errs:
             errs_string = "\n".join([f"{path}: {func} {exc_info}" for func, path, exc_info in errs])
-            exp_engine.logger.error(f"Errors while cleaning up {source_dir}: \n {errs_string}")
+            self.logger.error(f"Errors while cleaning up {source_dir}: \n {errs_string}")
 
         if not errs or not source_dir.exists():
-            exp_engine.logger.info(f"Cleaned up {source_dir}")
-            exp_engine.exp.storage.source_directory = None
+            self.logger.info(f"Cleaned up {source_dir}")
+            exp.storage.source_directory = None
