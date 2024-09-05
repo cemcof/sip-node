@@ -2,3 +2,4 @@ pyyaml
 pathlib
 psutil
 requests
+python-irodsclient
