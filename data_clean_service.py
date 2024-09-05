@@ -24,8 +24,8 @@ class DataCleanService(experiment.ExperimentModuleBase):
         if latest_file and (now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)) < clean_after:
             return
         
-        if self.module_config.get("dry_run"):
-            exp_engine.logger.info(f"Would clean up {source_dir}")
+        if bool(self.module_config.get("dry_run", True)):
+            exp_engine.logger.info(f"Would clean up {source_dir}, dry run enabled, skipping.")
             return
         
         errs = []

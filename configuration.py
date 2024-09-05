@@ -160,11 +160,11 @@ class LimsModuleConfigWrapper():
         self.module_name = module_name
         self.node_name = node_name
 
-    def get(self, item_path):
+    def get(self, item_path, default=None):
         try: 
             return self.__getitem__(item_path)
         except KeyError:
-            return None
+            return default
         
     def __getitem__(self, item):
         if self.module_name:
