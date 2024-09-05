@@ -3,6 +3,7 @@ import experiment
 from experiment import ExperimentStorageEngine, ExperimentWrapper
 import shutil, common, datetime
 import configuration
+from proxy_transferer import find_proxy_destination_directory_helper
 
 class DataCleanService(configuration.LimsNodeModule):
     def provide_experiments(self):
@@ -14,6 +15,8 @@ class DataCleanService(configuration.LimsNodeModule):
 
     def step_experiment(self, exp: ExperimentWrapper):
         source_dir = exp.storage.source_directory
+        proxy_source_dir = find_proxy_destination_directory_helper(exp, self.module_config.lims_config)
+
         if not source_dir:
             return
         
@@ -29,7 +32,7 @@ class DataCleanService(configuration.LimsNodeModule):
             return
         
         if bool(self.module_config.get("dry_run", True)):
-            self.logger.info(f"Would clean up {source_dir}, dry run enabled, skipping.")
+            self.logger.info(f"dry run, would clean up: -| {exp.data_model["Operator"]["Fullcontact"]} | {exp.data_model["User"]["Fullcontact"]} | {source_dir} | {proxy_source_dir} |-")
             return
         
         errs = []
@@ -37,6 +40,8 @@ class DataCleanService(configuration.LimsNodeModule):
             errs.append((func, path, exc_info))
 
         shutil.rmtree(source_dir, onexc=onerror)
+        if proxy_source_dir:
+            shutil.rmtree(proxy_source_dir, onexc=onerror)
 
 
         if errs:
