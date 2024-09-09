@@ -13,19 +13,19 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.platypus.tables import Table, TableStyle
 from pathlib import Path
 import csv
-import numpy as np
 import pathlib
 import sys
 from typing import Union
 
 import logging
 
+# Silence matplotlib spam logs
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 class CryosparcReport:
     csv_data_keys = ['name', 'creation_time', 'total_motion', 'early_motion',
                  'late_motion','defocus','astigmatism','astigmatism_angle',
-                 'resolution_CTF','relative_ice_thickness','picked_particles']
+                 'resolution_CTF','picked_particles']
     
     def __init__(self, 
                  cs_project_path: Union[str, pathlib.Path], # '/storage/brno14-ceitec/shared/cemcof/internal/DATA_24/240729_70_rimM_KO_tilt_0270C74E/cryosparc_240729_70_rimM_KO_tilt_0270C74E',
@@ -35,7 +35,9 @@ class CryosparcReport:
                  project_report_file='.project_report.dat',
                  csv_data_file='report_data.csv',
                  movies_local_dir='S1/import_movies',
-                 motion_correction_trajectories_dir='S1/motioncorrected'):
+                 motion_correction_trajectories_dir='S1/motioncorrected',
+                 movies_ctfestimation_local_dir='S1/ctfestimated',
+                 particles_local_dir='S1/extract'):
         self.cs_project_path = Path(cs_project_path)
         self.working_dir = working_dir or self.cs_project_path / "spa_report"
         self.working_dir.mkdir(exist_ok=True)
@@ -45,18 +47,20 @@ class CryosparcReport:
         self.csv_data_file = csv_data_file
         self.movies_local_dir = movies_local_dir
         self.motion_correction_trajectories_dir = motion_correction_trajectories_dir
+        self.movies_ctfestimation_local_dir = movies_ctfestimation_local_dir
+        self.particles_local_dir = particles_local_dir
 
 
     def create_report(self):
         # Check if the CSV file exists, and if not, create it with headers
-        csv_file_path = self.cs_project_path / self.csv_data_file
+        csv_file_path = self.working_dir / self.csv_data_file
         if not csv_file_path.exists():
             with open(csv_file_path, mode='w', newline='') as file:
                 writer = csv.DictWriter(file, fieldnames=self.csv_data_keys)
                 writer.writeheader()
 
         # Check if the project report file exists and read the last processed file count
-        project_report_path = self.cs_project_path / self.project_report_file
+        project_report_path = self.working_dir / self.project_report_file
         try:
             if project_report_path.is_file():
                 with open(project_report_path, 'r') as prf:
@@ -87,24 +91,45 @@ class CryosparcReport:
         for movie in to_do_files:
             name = movie.name
             moviePref = '.'.join(name.split('.')[:-1])
-            traj_file_path = self.cs_project_path / self.motion_correction_trajectories_dir / f'{moviePref}_traj.npy'
             
-            if traj_file_path.is_file():
+            particles_dir = self.cs_project_path / self.particles_local_dir 
+            globPatt = f'{moviePref}*_blob*.cs'
+            particle_files = list(particles_dir.glob(globPatt))
+            if particle_files:
                 movie_info['name'].append(name)
                 movie_info['creation_time'].append(movie.stat().st_mtime)
-                drift_data = np.load(traj_file_path)
-                motion_vectors = [((drift_data[0][i][0] - drift_data[0][i + 1][0]) ** 2 +
-                                   (drift_data[0][i][1] - drift_data[0][i + 1][1]) ** 2) ** 0.5 for i in range(drift_data.shape[1] - 1)]
+                drift_data_file_local_path = self.motion_correction_trajectories_dir / f"${moviePref}_traj.npy"
+                drift_data_file = self.cs_project_path / drift_data_file_local_path
+                drift_data = np.load(drift_data_file)
+                motion_vectors = [((drift_data[0][i][0]-drift_data[0][i+1][0])**2+(drift_data[0][i][1]-drift_data[0][i+1][1])**2)**0.5 for i in range(drift_data.shape[1]-1)]
                 movie_info['total_motion'].append(np.sum(motion_vectors))
                 movie_info['early_motion'].append(np.sum(motion_vectors[0:4]))
                 movie_info['late_motion'].append(np.sum(motion_vectors[4:]))
-                cur_bson_dict = bson_data[0]['exposures'][bson_id_according_to_motion[str(traj_file_path.relative_to(self.cs_project_path))]]['groups']
-                movie_info['defocus'].append(min(cur_bson_dict['exposure']['ctf']['df1_A'][0], cur_bson_dict['exposure']['ctf']['df2_A'][0]))
-                movie_info['astigmatism'].append(abs(cur_bson_dict['exposure']['ctf']['df1_A'][0] - cur_bson_dict['exposure']['ctf']['df2_A'][0]))
-                movie_info['astigmatism_angle'].append(180. * cur_bson_dict['exposure']['ctf']['df_angle_rad'][0] / np.pi)
-                movie_info['resolution_CTF'].append(cur_bson_dict['exposure']['ctf']['ctf_fit_to_A'][0])
-                movie_info['relative_ice_thickness'].append(cur_bson_dict['exposure']['ctf_stats']['ice_thickness_rel'][0])
-                movie_info['picked_particles'].append(cur_bson_dict['particle_blob']['count'])
+                particle_file = particle_files[0]
+                try:
+                    particles = np.load(particle_file)
+                    movie_info['defocus'].append(min(particles['ctf/df1_A'][0],particles['ctf/df2_A'][0]))
+                    movie_info['astigmatism'].append(abs(particles['ctf/df1_A'][0]-particles['ctf/df2_A'][0]))
+                    movie_info['astigmatism_angle'].append(np.degrees(particles['ctf/df_angle_rad'][0]))
+                    movie_info['picked_particles'].append(len(particles))
+                except:
+                    movie_info['defocus'].append(None)
+                    movie_info['astigmatism'].append(None)
+                    movie_info['astigmatism_angle'].append(None)
+                    movie_info['picked_particles'].append(None)
+
+                ctf_files_dir = self.cs_project_path / self.movies_ctfestimation_local_dir
+                ctf_files = list(ctf_files_dir.glob(f'{moviePref}*_diag_plt.npy'))
+                if ctf_files:
+                    ctf_data = np.load(ctf_files[0])
+                    ctf_thr = 0.3
+                    index_below_thr = np.where(ctf_data['CC'] < ctf_thr)[0]
+                    if index_below_thr.size > 0:
+                        movie_info['resolution_CTF'].append(1./float(ctf_data['freqs_trim'][index_below_thr[0]]))
+                    else:
+                        movie_info['resolution_CTF'].append(None)
+                else:
+                    movie_info['resolution_CTF'].append(None)
 
         # Update the project report file with the count of processed files
         with open(project_report_path, 'a') as oF:
@@ -184,7 +209,7 @@ class CryosparcReport:
 
     def timePlot(self, title, time, vals):
         filename = self.working_dir / ('%s_time.png' % title)
-        xVal = [datetime.datetime.fromtimestamp(float(i)).strftime('%H:%M:%S') for i in time]
+        xVal = [datetime.datetime.fromtimestamp(float(i)) for i in time]
         vals = [float(i) for i in vals]
         if len(xVal) > 1500:
             xVal = xVal[-1500:]
@@ -248,7 +273,6 @@ class CryosparcReport:
         plt.close()
 
         return filename
-
 
 if __name__ == '__main__':
     report = CryosparcReport(cs_project_path=sys.argv[1])
