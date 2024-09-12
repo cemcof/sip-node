@@ -27,7 +27,7 @@ def find_proxy_destination_directory_helper(exp: experiment.ExperimentWrapper, l
     
     # Prepare path mappings
     # Find proxy destination
-    return lims_conf.translate_path(exp.storage.source_directory, exp.secondary_id, path_mappings=target_mod["PathMappings"], to_proxy=True)
+    return lims_conf.translate_path(exp.data_source.source_directory, exp.secondary_id, path_mappings=target_mod["PathMappings"], to_proxy=True)
 
 class ProxyTransferHandler(configuration.LimsNodeModule):
     
@@ -48,9 +48,9 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
         # Add rules for source patterns
-        data_rules = exp.storage.get_combined_raw_datarules(data_rules)
+        data_rules = exp.data_source.get_combined_raw_datarules(data_rules)
 
-        source_dir = exp.storage.source_directory
+        source_dir = exp.data_source.source_directory
         def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRule):
             path_rel = source_path.relative_to(source_dir)
             target = destination_dir / path_rel

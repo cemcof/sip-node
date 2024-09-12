@@ -159,7 +159,47 @@ class ExperimentProcessingWrapper:
 
 
 # ------------- Experiment storage ----------------
+class ExperimentDataSourceWrapper:
+    def __init__(self, data: dict, exp_api: ExperimentApi):
+        self._data = data
+        self.exp_api = exp_api
 
+    @property
+    def source_directory(self):
+        return common.path_universal_factory(self._data["SourceDirectory"])
+    
+    @source_directory.setter
+    def source_directory(self, value: pathlib.Path):
+        value = str(value) if value else None
+        self.exp_api.patch_experiment({"DataSource": {"SourceDirectory": value}})
+        self._data["SourceDirectory"] = value
+    
+    @property
+    def clean_after(self):
+        return common.parse_timedelta(self._data["CleanAfter"])
+    
+    @property
+    def keep_source_files(self):
+        return self._data["KeepSourceFiles"]
+    
+    def mark_cleaned(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        self.exp_api.patch_experiment({
+            "DataSource": {
+                "DtCleaned": common.stringify_date(now), 
+                }
+                })
+        
+        self._data["DtCleaned"] = now
+    
+    def get_combined_raw_datarules(self, raw_rules):
+        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=TransferAction.MOVE, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
+        # If keeping files on the instrument is requested, use copy action on all, otherwise leave default configured values
+        if self.keep_source_files:
+            for r in raw_rules:
+                r.action = TransferAction.COPY
+
+        return raw_rules
 
 class ExperimentStorageWrapper:
     def __init__(self, exp_data: dict, exp_api: ExperimentApi) -> None:
@@ -209,29 +249,6 @@ class ExperimentStorageWrapper:
         return self._exp_data["Token"]
     
 
-    @property
-    def source_directory(self):
-        return common.path_universal_factory(self._exp_data["SourceDirectory"])
-    
-    @source_directory.setter
-    def source_directory(self, value: pathlib.Path):
-        value = str(value) if value else None
-        self.exp_api.patch_experiment({"Storage": {"SourceDirectory": value}})
-        self._exp_data["SourceDirectory"] = value
-    
-    @property
-    def keep_source_files(self):
-        return self._exp_data["KeepSourceFiles"]
-    
-    def get_combined_raw_datarules(self, raw_rules):
-        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=TransferAction.MOVE, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
-        # If keeping files on the instrument is requested, use copy action on all, otherwise leave default configured values
-        if self.keep_source_files:
-            for r in raw_rules:
-                r.action = TransferAction.COPY
-
-        return raw_rules
-    
     @property
     def state(self):
         return StorageState(self._exp_data["State"])
@@ -303,6 +320,10 @@ class ExperimentWrapper:
         self.exp_api.change_state
 
 
+    @property
+    def data_source(self):
+        return ExperimentDataSourceWrapper(self._data["DataSource"], self.exp_api)
+    
     @property
     def storage(self):
         return ExperimentStorageWrapper(self._data["Storage"], self.exp_api)
@@ -508,7 +529,7 @@ class ExperimentStorageEngine:
         source_path = pathlib.Path(source_path)
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
-        raw_rules = self.exp.storage.get_combined_raw_datarules(raw_rules)
+        raw_rules = self.exp.data_source.get_combined_raw_datarules(raw_rules)
         
         return self.upload(source_path, raw_rules, session_name="raw")
 

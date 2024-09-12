@@ -7,28 +7,30 @@ from proxy_transferer import find_proxy_destination_directory_helper
 
 class DataCleanService(configuration.LimsNodeModule):
     def provide_experiments(self):
-        return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="with_sourcedir")
+        return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="source_cleanable")
     
     def step(self):
         for exp in self.provide_experiments():
-            self.step_experiment(exp)
-
+            try:
+                self.step_experiment(exp)
+            except Exception as e:
+                self.logger.error(f"Error while cleaning up experiment {exp.data_model['SecondaryId']}: {e}")
+                                                                        
     def step_experiment(self, exp: ExperimentWrapper):
-        source_dir = exp.storage.source_directory
+        source_dir = exp.data_source.source_directory
         proxy_source_dir = find_proxy_destination_directory_helper(exp, self.module_config.lims_config)
 
         if not source_dir:
             return
         
         if not source_dir.exists():
-            exp.storage.source_directory = None
+            exp.data_source.mark_cleaned()
             return
         
         # Check if directory was untouched for configured time by checking file with latest modification time
         latest_file = max(source_dir.rglob('*'), key=lambda f: f.stat().st_mtime, default=None)
-        clean_after = common.parse_timedelta(self.module_config.get("clean_after", "7.00:00:00"))
         now = datetime.datetime.now(datetime.timezone.utc)
-        if latest_file and (now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)) < clean_after:
+        if latest_file and (now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)) < exp.data_source.clean_after:
             return
         
         if bool(self.module_config.get("dry_run", True)):
@@ -50,4 +52,4 @@ class DataCleanService(configuration.LimsNodeModule):
 
         if not errs or not source_dir.exists():
             self.logger.info(f"Cleaned up {source_dir}")
-            exp.storage.source_directory = None
+            exp.data_source.mark_cleaned()
