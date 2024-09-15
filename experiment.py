@@ -173,6 +173,14 @@ class ExperimentDataSourceWrapper:
         value = str(value) if value else None
         self.exp_api.patch_experiment({"DataSource": {"SourceDirectory": value}})
         self._data["SourceDirectory"] = value
+
+    @property
+    def source_patterns(self):
+        pattlist = self._data["SourcePatterns"]
+        for p in pattlist:
+            # Current policy is: if pattern does not contain any / nor *, consider it as a full glob
+            # and prepend **/* to it
+            yield p if "/" in p or "*" in p else "**/*" + p
     
     @property
     def clean_after(self):
@@ -205,14 +213,6 @@ class ExperimentStorageWrapper:
     def __init__(self, exp_data: dict, exp_api: ExperimentApi) -> None:
         self._exp_data = exp_data
         self.exp_api = exp_api
-
-    @property
-    def source_patterns(self):
-        pattlist = self._exp_data["SourcePatterns"]
-        for p in pattlist:
-            # Current policy is: if pattern does not contain any / nor *, consider it as a full glob
-            # and prepend **/* to it
-            yield p if "/" in p or "*" in p else "**/*" + p
 
     @property
     def engine(self):
@@ -530,7 +530,6 @@ class ExperimentStorageEngine:
         raw_rules = self.data_rules.with_tags("raw")
         # Add raw files specified by user on the experiment 
         raw_rules = self.exp.data_source.get_combined_raw_datarules(raw_rules)
-        
         return self.upload(source_path, raw_rules, session_name="raw")
 
     def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, log=True):

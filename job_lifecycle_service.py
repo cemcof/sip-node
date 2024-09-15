@@ -66,7 +66,7 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
                 exp_engine.exp.state = experiment.JobState.STOP_REQUESTED
 
         def exp_running():
-            exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.storage.source_directory, exp_engine.exp.secondary_id)
+            exp_data_source = self.module_config.lims_config.translate_path(exp_engine.exp.data_source.source_directory, exp_engine.exp.secondary_id)
             exp_engine.sniff_and_process_metafile(exp_data_source)
 
             # dt_upload_start = datetime.
