@@ -556,7 +556,7 @@ class ExperimentStorageEngine:
                 self.logger.error(f"Failed to transfer {source_path} to {relative_target}: {e}")
                 raise
 
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}.dat" if session_name else None
         sniffer = DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
         return sniffer.sniff_and_consume()
     
