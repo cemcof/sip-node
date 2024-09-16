@@ -41,14 +41,14 @@ class CryosparcReport:
         self.cs_project_path = Path(cs_project_path)
         self.working_dir = working_dir or self.cs_project_path / "spa_report"
         self.working_dir.mkdir(exist_ok=True)
-        self.bsonFile = bsonFile
-        self.output_pdf_file = output_pdf_file
-        self.project_report_file = project_report_file
-        self.csv_data_file = csv_data_file
-        self.movies_local_dir = movies_local_dir
-        self.motion_correction_trajectories_dir = motion_correction_trajectories_dir
-        self.movies_ctfestimation_local_dir = movies_ctfestimation_local_dir
-        self.particles_local_dir = particles_local_dir
+        self.bsonFile = pathlib.Path(bsonFile)
+        self.output_pdf_file = pathlib.Path(output_pdf_file)
+        self.project_report_file = pathlib.Path(project_report_file)
+        self.csv_data_file = pathlib.Path(csv_data_file)
+        self.movies_local_dir = pathlib.Path(movies_local_dir)
+        self.motion_correction_trajectories_dir = pathlib.Path(motion_correction_trajectories_dir)
+        self.movies_ctfestimation_local_dir = pathlib.Path(movies_ctfestimation_local_dir)
+        self.particles_local_dir = pathlib.Path(particles_local_dir)
 
 
     def create_report(self):
