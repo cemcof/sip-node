@@ -166,7 +166,8 @@ class ExperimentDataSourceWrapper:
 
     @property
     def source_directory(self):
-        return common.path_universal_factory(self._data["SourceDirectory"])
+        source_dir_str = self._data["SourceDirectory"]
+        return common.path_universal_factory(source_dir_str) if source_dir_str else None
     
     @source_directory.setter
     def source_directory(self, value: pathlib.Path):

@@ -4,37 +4,37 @@ from experiment import ExperimentStorageEngine, ExperimentWrapper
 import shutil, common, datetime
 import configuration
 from proxy_transferer import find_proxy_destination_directory_helper
-
+import sys
 class DataCleanService(configuration.LimsNodeModule):
     def provide_experiments(self):
         return experiment.ExperimentsApi(self._api_session).get_experiments(subpath="source_cleanable")
     
     def step(self):
-        for exp in self.provide_experiments():
+        exps_to_clean = self.provide_experiments()
+        self.logger.info(f"Found {len(exps_to_clean)} exps to clean raw data")
+        for exp in exps_to_clean:
             try:
                 self.step_experiment(exp)
             except Exception as e:
-                self.logger.error(f"Error while cleaning up experiment {exp.data_model['SecondaryId']}: {e}")
+                self.logger.error(f"Error while cleaning up experiment {exp.data_model['SecondaryId']}: {e}", exc_info=True)
                                                                         
     def step_experiment(self, exp: ExperimentWrapper):
         source_dir = exp.data_source.source_directory
-        proxy_source_dir = find_proxy_destination_directory_helper(exp, self.module_config.lims_config)
-
-        if not source_dir:
-            return
-        
-        if not source_dir.exists():
+        if not source_dir or not source_dir.exists():
             exp.data_source.mark_cleaned()
             return
+
+        proxy_source_dir = find_proxy_destination_directory_helper(exp, self.module_config.lims_config)
         
         # Check if directory was untouched for configured time by checking file with latest modification time
-        latest_file = max(source_dir.rglob('*'), key=lambda f: f.stat().st_mtime, default=None)
+        latest_file = max(source_dir.rglob('*'), key=lambda f: f.stat().st_mtime, default=source_dir)
         now = datetime.datetime.now(datetime.timezone.utc)
-        if latest_file and (now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)) < exp.data_source.clean_after:
+        time_diff = now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)
+        if time_diff < exp.data_source.clean_after:
             return
         
         if bool(self.module_config.get("dry_run", True)):
-            self.logger.info(f"dry run, would clean up: -| {exp.data_model["Operator"]["Fullcontact"]} | {exp.data_model["User"]["Fullcontact"]} | {source_dir} | {proxy_source_dir} |-")
+            self.logger.info(f"dry run, would clean up: {source_dir} {proxy_source_dir}")
             return
         
         errs = []
@@ -51,5 +51,5 @@ class DataCleanService(configuration.LimsNodeModule):
             self.logger.error(f"Errors while cleaning up {source_dir}: \n {errs_string}")
 
         if not errs or not source_dir.exists():
-            self.logger.info(f"Cleaned up {source_dir}")
+            self.logger.info(f"Cleaned up {source_dir}, time diff: {time_diff}")
             exp.data_source.mark_cleaned()
