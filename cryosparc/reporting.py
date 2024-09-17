@@ -76,15 +76,6 @@ class CryosparcReport:
         files = sorted(movies_dir_path.iterdir(), key=lambda f: f.stat().st_mtime)[processed_files:]
         to_do_files = [f for f in files]
 
-        # Read bson file and do initial sorting
-        bson_file_path = self.cs_project_path / self.bsonFile
-        with open(bson_file_path, 'rb') as file:
-            bson_data = bson.decode_all(file.read())
-
-        bson_id_according_to_motion = {}
-        for b in range(len(bson_data[0]['exposures'])):
-            bson_id_according_to_motion[bson_data[0]['exposures'][b]['groups']['exposure']['rigid_motion']['path'][0]] = b
-
         movie_info = {key: [] for key in self.csv_data_keys}
 
         # Process each movie file
