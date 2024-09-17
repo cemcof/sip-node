@@ -89,7 +89,7 @@ class CryosparcReport:
             if particle_files:
                 movie_info['name'].append(name)
                 movie_info['creation_time'].append(movie.stat().st_mtime)
-                drift_data_file_local_path = self.motion_correction_trajectories_dir / f"${moviePref}_traj.npy"
+                drift_data_file_local_path = self.motion_correction_trajectories_dir / f"{moviePref}_traj.npy"
                 drift_data_file = self.cs_project_path / drift_data_file_local_path
                 drift_data = np.load(drift_data_file)
                 motion_vectors = [((drift_data[0][i][0]-drift_data[0][i+1][0])**2+(drift_data[0][i][1]-drift_data[0][i+1][1])**2)**0.5 for i in range(drift_data.shape[1]-1)]
