@@ -12,6 +12,7 @@ import logger_db_api
 import datetime
 import enum
 import uuid
+import threading
 import inspect, tempfile
 from typing import List, Union
 from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, list_directory
@@ -676,29 +677,54 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
     def __init__(self, name, logger, lims_logger, config: configuration.LimsModuleConfigWrapper, api_session, exp_storage_engine_factory):
         super().__init__(name, logger, lims_logger, config, api_session)
         self.exp_storage_engine_factory = exp_storage_engine_factory
+        self.exec_state = {}
 
-    def _get_experiment_storage_engine(self, exp: ExperimentWrapper, e_config, logger: logging.Logger):
-        return self.exp_storage_engine_factory(exp, e_config, logger, self.module_config)
+    def _get_experiment_storage_engine(self, e: ExperimentWrapper):
+        exp_logger = logger_db_api.experiment_logger_adapter(self._lims_logger, e.id)
+        exp_config = self.module_config.lims_config.get_experiment_config(e.instrument, e.technique)
+         
+        return self.exp_storage_engine_factory(e, exp_config, exp_logger, self.module_config)
+    
+    @property
+    def is_parallel(self):
+        return self.module_config.get("parallel", False)
+    
+    def _clean_finished_threads(self):
+        for exp_id, thrd in self.exec_state.items():
+            if not thrd.is_alive():
+                del self.exec_state[exp_id]
     
     def step(self):
+        self._clean_finished_threads()
+        
         experiments = self.provide_experiments()
-        for e in experiments:
 
-            exp_logger = logger_db_api.experiment_logger_adapter(self._lims_logger, e.id)
-            exp_config = self.module_config.lims_config.get_experiment_config(e.instrument, e.technique)
-            
+        def step_exp_helper(exp_engine):
             try:
-                exp_engine = self._get_experiment_storage_engine(e, exp_config, exp_logger)
+                self.step_experiment(exp_engine)
+            except Exception as e:
+                self.logger.exception(e)
+
+        def wrap_step_parallel(exp_engine):
+            if exp_engine.exp.id in self.exec_state:
+                return
+            thrd = threading.Thread(target=step_exp_helper, args=(exp_engine,))
+            thrd.start()
+            self.exec_state[exp_engine.exp.id] = thrd
+
+        for e in experiments:
+            try:
+                exp_engine = self._get_experiment_storage_engine(e)
             except Exception as e:
                 self.logger.error("Could not create storage engine for experiment, skipping")
                 self.logger.exception(e)
                 continue
-
-            try:
-                self.step_experiment(exp_engine)
-            except Exception as e: 
-                self.logger.exception(e)
-
+            
+            if self.is_parallel:
+                wrap_step_parallel(exp_engine)
+            else:
+                step_exp_helper(exp_engine)
+                
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         pass
 
