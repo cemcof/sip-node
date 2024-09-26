@@ -52,6 +52,7 @@ class PublicationState(enum.Enum):
     UNPUBLISHED = "Unpublished"
     DRAFT_CREATION_REQUESTED = "DraftCreationRequested"
     DRAFT_CREATED = "DraftCreated"
+    DRAFT_REMOVAL_REQUESTED = "DraftRemovalRequested"
     PUBLICATION_REQUESTED = "PublicationRequested"
     PUBLISHED = "Published"
 

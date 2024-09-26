@@ -122,6 +122,14 @@ class B2ShareDraft:
         response = self.http_session.post("api/records/", json=metadata)
         new_record = response.json()
         self.draft_id = new_record["id"]
+
+    def delete_draft(self, not_exists_ok=True):
+        response = self.http_session.delete(self.draft_url())
+        if response.status_code == 404 and not_exists_ok:
+            return
+        
+        response.raise_for_status()
+        self.draft_id = None
     
 
 def b2share_session_factory(base_url: str, api_key: str, timeout=5):
@@ -142,7 +150,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
     # This override gets us experiments ready for publishing instead of the active ones
     def provide_experiments(self):
         publication_requested_exps = experiment.ExperimentsApi(self._api_session).get_experiments_by_states(
-            publication_state=[experiment.PublicationState.PUBLICATION_REQUESTED, experiment.PublicationState.DRAFT_CREATION_REQUESTED]
+            publication_state=[experiment.PublicationState.PUBLICATION_REQUESTED, experiment.PublicationState.DRAFT_CREATION_REQUESTED, experiment.PublicationState.DRAFT_REMOVAL_REQUESTED]
             )
         # Only these for b2share
         return filter(lambda e: e.publication.engine == "b2share" and e.storage.archive, publication_requested_exps)
@@ -197,9 +205,15 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
             exp_engine.exp.exp_api.patch_experiment({"Publication": {"RecordId": b2share_draft.draft_id, "State": experiment.PublicationState.DRAFT_CREATED.value}})
             exp_engine.logger.info("Successfully created b2share draft.")
 
+        def remove_draft():
+            b2_draft = b2Share_draft_factory(self.module_config["B2ShareConnection"], exp_engine.exp.publication.draft_id)
+            b2_draft.delete_draft(not_exists_ok=True)
+            exp_engine.exp.exp_api.patch_experiment({"Publication": {"State": experiment.PublicationState.UNPUBLISHED.value, "RecordId": None}})
+
         action_map = {
             experiment.PublicationState.PUBLICATION_REQUESTED: publish,
-            experiment.PublicationState.DRAFT_CREATION_REQUESTED: create_draft
+            experiment.PublicationState.DRAFT_CREATION_REQUESTED: create_draft,
+            experiment.PublicationState.DRAFT_REMOVAL_REQUESTED: remove_draft
         }
 
         action_map[exp_engine.exp.publication.state]()
