@@ -153,11 +153,11 @@ class ExperimentProcessingWrapper:
 
     @property
     def result_document_id(self):
-        return self.processing_data["ResultDocumentId"]
+        return self.processing_data["ResultReport"]["Id"]
     
     @property
     def log_document_id(self):
-        return self.processing_data["LogDocumentId"]
+        return self.processing_data["LogReport"]["Id"]
 
 
 # ------------- Experiment storage ----------------
