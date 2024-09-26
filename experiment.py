@@ -152,12 +152,12 @@ class ExperimentProcessingWrapper:
         return self.processing_data["Workflow"]
 
     @property
-    def result_document_id(self):
-        return self.processing_data["ResultReport"]["Id"]
+    def result_document(self):
+        return ExperimentDocumentWrapper(self.processing_data["ResultReport"], self.exp_api)
     
     @property
-    def log_document_id(self):
-        return self.processing_data["LogReport"]["Id"]
+    def log_document(self):
+        return ExperimentDocumentWrapper(self.processing_data["LogReport"], self.exp_api)
 
 
 # ------------- Experiment storage ----------------
@@ -424,7 +424,41 @@ class ExperimentsApi:
 
     def for_experiment(self, id):
         return ExperimentApi(id, self._http_session)
+
+class ExperimentDocumentWrapper:
+    def __init__(self, doc_data, exp_api: ExperimentApi):
+        self._doc_data = doc_data
+        self.exp_api = exp_api
+
+    @property
+    def id(self):
+        return self._doc_data["Id"]
     
+    @property 
+    def primary_file_metadata(self):
+        files = self._doc_data["FilesInDocuments"]
+        # Find file that is primary
+        prim_file = next(filter(lambda f: f["DocumentFileType"] == "Primary", files), None)
+
+        if prim_file is None:
+            return None
+        
+        return prim_file["FileMetadata"]
+    
+    @property
+    def primary_file_lastmodified(self):
+        """
+        Get modification/update datetime of document's primary file, if any
+        """
+        prim_file = self.primary_file_metadata
+        if prim_file is None:
+            return None
+        
+        return common.parse_date(prim_file["DtModified"])
+    
+    def upload_files(self, data, append=False):
+        return self.exp_api.upload_document_files(self.id, data, append=append)
+
 class ExperimentStorageEngine:
     def __init__(self, 
                  experiment: ExperimentWrapper, 

@@ -372,13 +372,13 @@ class ScipionProcessingHandler(ExperimentModuleBase):
             def log_consumer(watcher: FileWatcher, data: str):
                 new_data.append((watcher.name, data, "text/plain"))    
             sciw.prepare_protocol_log_watcher(log_consumer).consume_new_data()
-            exp.exp_api.upload_document_files(exp.processing.log_document_id, files=new_data, append=True)
+            exp.processing.log_document.upload_files(new_data, append=True)
 
             # Sniff for new results and upload them to the LIMS
             result_sniffer = sciw.get_summary_results_file_watcher()
             if result_sniffer and result_sniffer.has_changed_since_last_mark():
                 with result_sniffer.file_path.open("rb") as stream:
-                    exp.exp_api.upload_document_files(exp.processing.result_document_id, ("Scipion results", stream, "text/html"))
+                    exp.processing.result_document.upload_files(("Scipion results", stream, "text/html"))
                     result_sniffer.mark_processed()
 
 
