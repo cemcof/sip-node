@@ -588,7 +588,7 @@ class ExperimentStorageEngine:
         def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
             source_abs_path = self.resolve_target_location(source_path_relative)
             target_rel_path = data_rule.translate_to_target(source_path_relative)
-            print("FWEFEWFEWF", source_path_relative, source_abs_path, target_rel_path)
+            print("TRANSFER TO: ", source_path_relative, source_abs_path, target_rel_path)
             if source_abs_path is None:
                 # We do not have access to the file directly in filesystem - need to use buffer file 
                 self.get_file(source_path_relative, buffer_file)
@@ -657,7 +657,7 @@ class ExperimentStorageEngine:
                 metad_parsed = yaml.safe_load(metad_yaml)
                 if not isinstance(metad_parsed, dict):
                     raise Exception("Metadata file does not contain a dictionary")
-                metad = metad_parsed
+                metad = metad_parsed # TODO - is this a bug? 
             except:
                 self.logger.warning(f"Failed to read metadata from {self.metadata_target}")
 
