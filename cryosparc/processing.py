@@ -136,16 +136,15 @@ class CryosparcWrapper(StateObj):
 
         self._invoke_cryosparc_cli("stop", args, stdin="")
         self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
-        self._create_and_submit_report()
         self.exp.processing.state = ProcessingState.FINALIZING
 
-    def _create_and_submit_report(self):
+    def create_and_submit_report(self):
         report = CryosparcReport(self.project_path)
         try:
             report_path = report.create_report()
             with open(report_path, "rb") as stream:
                 # stream = TextIOWrapper(f) # TODO - how
-                self.exp.exp_api.upload_document_files(self.exp.processing.result_document_id, ("Cryosparc result report", stream, "application/pdf"))
+                self.exp.processing.result_document.upload_files(("Cryosparc result report", stream, "application/pdf"))
         except Exception as e:
             self.exp_engine.logger.error(f"Error during report creation or submission: {e}")
             raise
@@ -176,6 +175,12 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         def _filter_relevant_upload_results(up_result: list):
             up_result = [f for f in up_result if not (".log" in f[0] or "workspaces.json" in f[0])]
             return up_result
+        
+        def _check_and_gen_report_helper():
+            interval = common.parse_timedelta(cconf.get("report_generation_interval", "00:10:00.0"))
+            should_gen = common.elapsed_since(interval, exp_engine.exp.processing.result_document.primary_file_lastmodified, exp_engine.exp.dt_created)
+            if should_gen:
+                cw.create_and_submit_report()
 
         def running():
             # Fetch new data from storage -> processing project
@@ -184,6 +189,7 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             # Return new data from processing project -> storage
             up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
             up_result = _filter_relevant_upload_results(up_result)
+            _check_and_gen_report_helper()
 
             # Check if the processing is done
             # Some log files can change even though nothing reasonable is happening, ignore them
@@ -214,7 +220,10 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             change_delta = now_utc - exp_engine.exp.processing.last_update
             print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
             if timeout_delta < change_delta:
+                cw.create_and_submit_report()
                 exp_engine.exp.processing.state = ProcessingState.COMPLETED
+            else:
+                _check_and_gen_report_helper()
 
         exec_state(cw,
             {

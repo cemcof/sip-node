@@ -27,6 +27,8 @@ def parse_iso_date(date_str: str):
 
 def parse_date(date_str: str):
     """ Parse string representation of the date, return None on default values (start of epoch, -infinity etc.) """
+    if not date_str:
+        return None
     dt = parse_iso_date(date_str)
     if dt.year == 1 or dt.year == 0:
         return None
@@ -34,6 +36,19 @@ def parse_date(date_str: str):
     
 def stringify_date(dt: datetime.datetime):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+def elapsed_since(interval: datetime.timedelta, *sinces : datetime.datetime, dt_from=None):
+    """ Return True if the interval has passed since first given date that is not None. Raises if all given dates are None"""
+    if not dt_from:
+        dt_from = datetime.datetime.now(datetime.timezone.utc)
+
+    for since in sinces:
+        if not since: 
+            continue
+
+        return dt_from - since > interval
+    
+    raise ValueError("No valid since date provided")
 
 
 def parse_timedelta(timedelta: str) -> datetime.timedelta:
