@@ -98,6 +98,8 @@ class B2ShareDraft:
         return record["metadata"]["publication_state"] == "published"
     
     def prepare_draft_metadata(self, title, metadata):
+        title = f"{metadata['DATA_facility_name']} {metadata['PI_last_name']} {metadata['LIMS_ID'][-7:]}"
+
         # Convert metadata to b2share format
         meta =  {
             "titles": [{ "title": title }],
@@ -165,7 +167,6 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
                 self.logger.info(f"Not publishing experiment {exp.secondary_id} - must be archived first and state is {exp.storage.state}")
                 return
             
-            # Draft for the experiment must exist
             b2_draft = b2Share_draft_factory(self.module_config["B2ShareConnection"], exp.publication.draft_id)
             if not b2_draft.exists():
                 self.logger.error("Draft must exist")
@@ -195,6 +196,11 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
         def create_draft():
             b2share_draft = b2Share_draft_factory(self.module_config["B2ShareConnection"], draft_id=None)
             # We need to get the metadata 
+            # USE ONLY NOW FOR TESTING
+            # Draft for the experiment must exist
+            print(f"Temporarily disabled {exp_engine.exp.secondary_id}")
+            return 
+            exp_engine.restore_metadata(exp_engine.extract_metadata())
             metadata = exp_engine.read_metadata()
             metadata = b2share_draft.prepare_draft_metadata(exp_engine.exp.secondary_id, metadata)
             # Prepare file access tickets
