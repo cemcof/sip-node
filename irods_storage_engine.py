@@ -231,10 +231,9 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self.irods_collection.drop_collection()
     
     def glob(self, data_rules: data_tools.DataRulesWrapper):
-        print("h", self.irods_collection.collection_path)
         if (self.fs_underlying_storage):
             return self.fs_underlying_storage.glob(data_rules)
-        files = { pathlib.Path(dobject.path).relative_to(self.collection_path) : dobject for dobject in self.irods_collection.walk() }
+        files = { pathlib.Path(dobject.path).relative_to(self.irods_collection.collection_path) : dobject for dobject in self.irods_collection.walk() }
         for f, dr in data_rules.match_files(files.keys()):
             yield f, dr, files[f].modify_time.timestamp(), files[f].size # TODO - maybe old meta values for longer processing
 
