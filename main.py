@@ -52,11 +52,10 @@ config = configuration.LimsConfigWrapper(arguments.organization_name, node_name)
 if arguments.config_file:
     config.from_file(arguments.config_file)
     is_config_master = True
-    # Get organization id from the file 
-    if not arguments.organization_name:
-        arguments.organization_name = config["Center"]["Identifier"]
     # API arguments should be present in the file - load them
     api_config = config["SipApi"]
+    if not arguments.organization_name:
+        arguments.organization_name = api_config["Organization"]
     if not arguments.sip_api_url:
         arguments.sip_api_url = api_config["BaseUrl"]
     if not arguments.sip_api_key:
