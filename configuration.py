@@ -200,7 +200,16 @@ class LimsNodeModule:
         pass
 
     
-    
+def _ping_helper(session: requests.Session, node_name):
+    """ Ping sip server and extract last config update datetime from the response """
+    # Ping SIP, response of ping is the last time center configuration was updated 
+    ping_result = session.get(f"centers/ping/{node_name}")
+
+    try:
+        last_config_update = datetime.datetime.fromisoformat(ping_result.text)
+        return last_config_update
+    except ValueError:
+        raise ValueError(f"SIP API not responding with correct value on pinging, check if url is correct: {ping_result.request.url}")
 
 class ConfigToDbSyncer(LimsNodeModule):
 
@@ -210,9 +219,7 @@ class ConfigToDbSyncer(LimsNodeModule):
         # Load new configuration if changed
         config.from_file()
 
-        # Ping LIMS, response of ping is the last time center configuration was updated 
-        ping_result = self._api_session.get(f"centers/ping/{config.node_name}")
-        last_config_update = datetime.datetime.fromisoformat(ping_result.text)
+        last_config_update = _ping_helper(self._api_session, config.node_name)
 
         # If currently loaded config is newer then that one in LIMS, push it ther
         if config._last_update > last_config_update: 
@@ -227,9 +234,7 @@ class ConfigFromDbSyncer(LimsNodeModule):
     def step(self):
         config = self.module_config.lims_config
 
-        # Ping LIMS, response of ping is the last time center configuration was updated 
-        ping_result = self._api_session.get(f"centers/ping/{config.node_name}")
-        last_config_update = datetime.datetime.fromisoformat(ping_result.text)
+        last_config_update = _ping_helper(self._api_session, config.node_name)
 
         # If current configuration is older then that one in LIMS, pull it from there
         if last_config_update == datetime.datetime.min: # This means there is no configuration available
