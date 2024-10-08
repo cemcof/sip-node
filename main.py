@@ -54,15 +54,19 @@ if arguments.config_file:
     is_config_master = True
     # API arguments should be present in the file - load them
     api_config = config["SipApi"]
-    if not arguments.organization_name:
-        arguments.organization_name = api_config["Organization"]
-    if not arguments.sip_api_url:
-        arguments.sip_api_url = api_config["BaseUrl"]
-    if not arguments.sip_api_key:
-        arguments.sip_api_key = api_config["SecretKey"]
+    arguments.organization_name = arguments.organization_name or api_config["Organization"]
+    arguments.sip_api_url = arguments.sip_api_url or api_config["BaseUrl"]
+    arguments.sip_api_key = arguments.sip_api_key or api_config["SecretKey"]
 
 if not arguments.organization_name:
-    aparser.error("Organization name must be provided either by command line argument or through config file")
+    aparser.error("Organization name must be provided either by command line argument (-o, --organization-name) or through config file (SipApi.Organization)")
+
+if not arguments.sip_api_key:
+    aparser.error("SIP API key must be provided either by command line argument (--sip-api-key) or through config file (SipApi.SecretKey)")
+
+if not arguments.sip_api_url:
+    aparser.error("SIP API URL must be provided either by command line argument (--sip-api-url) or through config file (SipApi.BaseUrl)")
+
 
 # ========= Factories, edit them to provide required dependencies ===========
 def lims_api_session_provider():
