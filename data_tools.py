@@ -82,12 +82,24 @@ class DataRule:
 
     @staticmethod
     def _search_subfiles_indices(files: typing.List[pathlib.Path], index: int):
+        def _matches(f1: pathlib.Path, f2: pathlib.Path):
+            # Must have same parent 
+            if not f1.parent == f2.parent:
+                return False
+
+            # F1's name is same as F2's stem
+            if f1.name == f2.stem:
+                return True
+            
+            # F2 stem is basename of F1 (must be followed immediately by extension)
+            return f1.name.startswith(f2.stem + ".")
+        
         # Subfiles are around the given index, find start index and end index, then yeild them
         start_index = index
-        while start_index > 0 and files[start_index - 1].parent == files[index].parent and files[start_index - 1].name.startswith(files[index].stem):
+        while start_index > 0 and _matches(files[start_index - 1], files[index]):
             start_index = start_index - 1
         end_index = index
-        while end_index < len(files) - 1 and files[end_index + 1].parent == files[index].parent and files[end_index + 1].name.startswith(files[index].stem):
+        while end_index < len(files) - 1 and _matches(files[end_index + 1], files[index]):
             end_index = end_index + 1
         
         return start_index, end_index
