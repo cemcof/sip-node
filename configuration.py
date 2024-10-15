@@ -112,7 +112,10 @@ class LimsConfigWrapper():
         return LimsModuleConfigWrapper(None, self.node_name, self)
 
     def get_node_config(self, node_name=None):
-        return self._config["LimsNodes"][node_name or self.node_name]
+        node = self._config["LimsNodes"].get(node_name or self.node_name, None)
+        if node is None: 
+            raise ValueError(f"Node {node_name} not found in the configuration")
+        return node
     
     def get_module_config(self, module_name, node_name=None):
         return next(filter(lambda x: x["target"] == module_name, self.get_node_config(node_name)["Modules"]), None)
