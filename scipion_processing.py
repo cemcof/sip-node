@@ -205,7 +205,7 @@ class ScipionWrapper:
 
         # We need to fire and forget the process using Popen, because otherwise it will block the thread
         proc = subprocess.Popen(cmd, shell=True, env=env, start_new_session=True)
-        self.logger.info(f"Running scipion scheduler on the project, pid is {proc.pid}")
+        self.logger.info(f"Running scipion schedule on the project {proc.pid}: \n {cmd}")
         return proc.pid
     
     def stop(self):
@@ -216,7 +216,7 @@ class ScipionWrapper:
 
     def _stop_command(self):
         cmd, env = self.prepare_scipion_command(f'python -m pyworkflow.project.scripts.stop "{self.project_name}"')
-        self.logger.info(f"Invoking: {cmd}")
+        self.logger.info(f"Creating scipion project: \n {cmd}")
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, env=env)
         self.logger.info(f"Exit {result.returncode}")
         self.logger.info(f"Stdout {result.stdout.strip()}")
@@ -300,7 +300,7 @@ class ScipionExpWrapper(ScipionWrapper, StateObj):
                 prot[v] = prot[k]
             
         # Take configured static values and ensure no others for their keys are set in the workflow protocols
-        replace_dict: dict = self.scipion_config["ModelOverwrites"] if "ModelOverwrites" in self.scipion_config else None
+        replace_dict: dict = self.scipion_config["model_overwrites"] if "model_overwrites" in self.scipion_config else None
         if replace_dict:
             for prot in protocols:
                 for k, v in filter(lambda x: x[0] in prot, replace_dict.items()):
