@@ -725,7 +725,7 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
         return self.module_config.get("parallel", False)
     
     def _clean_finished_threads(self):
-        for exp_id, thrd in self.exec_state.items():
+        for exp_id, thrd in list(self.exec_state.items()):
             if not thrd.is_alive():
                 del self.exec_state[exp_id]
     
