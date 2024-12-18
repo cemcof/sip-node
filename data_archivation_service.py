@@ -10,7 +10,18 @@ class DataArchivationService(experiment.ExperimentModuleBase):
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         # We have experiment current storage engine
         # Our task is to move data to another storage engine, if desired (configured)
+
+        # DELETING DATA??? 
         exp_target_storage_engine = self.module_config["archivation_storage"]
+        if exp_engine.exp.storage.engine == exp_target_storage_engine:
+            print("Same storage, already archvied")
+            # We are already on the target storage, nothing to do, just mark as archived
+            exp_engine.exp.storage.state = experiment.StorageState.ARCHIVED
+            return
+        
+        print(f"ARCHIVE {exp_engine.exp.secondary_id} Temporarily disabled archivation")
+        return
+    
         exp_config = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)
         exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
 
@@ -24,7 +35,7 @@ class DataArchivationService(experiment.ExperimentModuleBase):
 
         # Archive (=move) data
         try:
-            print("ARCH", exp_engine.exp.secondary_id)
+            print("ARCH", exp_engine.exp.secondary_id, exp_engine.irods_collection.collection_path, exp_engine.connection_config)
             archive_data_rules = exp_engine.data_rules.with_tags("archive")
             transfers, errs = exp_engine.transfer_to(exp_target_storage, archive_data_rules, transfer_action=TransferAction.MOVE, session_name=f"archivation_to_{exp_target_storage_engine.replace('/', '_')}")
             if errs:
