@@ -25,12 +25,17 @@ class DataCleanService(configuration.LimsNodeModule):
             return
 
         proxy_source_dir = find_proxy_destination_directory_helper(exp, self.module_config.lims_config)
-        
+        now = datetime.datetime.now(datetime.timezone.utc)
+        clean_after = exp.data_source.clean_after
+
+        start_time_diff = now - exp.dt_created
+        if start_time_diff < clean_after:
+            return
+
         # Check if directory was untouched for configured time by checking file with latest modification time
         latest_file = max(source_dir.rglob('*'), key=lambda f: f.stat().st_mtime, default=source_dir)
-        now = datetime.datetime.now(datetime.timezone.utc)
         time_diff = now - datetime.datetime.fromtimestamp(latest_file.stat().st_mtime, tz=datetime.timezone.utc)
-        if time_diff < exp.data_source.clean_after:
+        if time_diff < clean_after:
             return
         
         if bool(self.module_config.get("dry_run", True)):
