@@ -13,7 +13,7 @@ import yaml
 import common
 from common import as_list
 import functools
-
+from fnmatch import fnmatch
 
 class TransferAction(Enum):
     COPY = "copy"
@@ -58,7 +58,7 @@ class DataRule:
     def _match_files_without_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[str]):
         files = list(files)
         for f in files:
-            if any(f.match(p) for p in patterns):
+            if any(fnmatch(str(f), p) for p in patterns):
                 yield f
 
     @staticmethod
@@ -69,7 +69,7 @@ class DataRule:
         index = 0   
         while index < len(files):
             f = files[index]
-            if any(f.match(p) for p in patterns):
+            if any(fnmatch(str(f), p) for p in patterns):
                 yield f
                 # Now search for subfiles - thanks to sorting, they should be in one sequence with the main file
                 start_index, end_index = DataRule._search_subfiles_indices(files, index)
@@ -184,7 +184,6 @@ class DataRulesSniffer:
 
             is_ready = (now - time_change) > self.min_nochange_sec
             should_consume = consumed_time is None or (self.reconsume_on_change and consumed_time < time_change)
-
             if is_ready and should_consume:
                 try:
                     self.consumer(f, data_rule)
@@ -637,8 +636,11 @@ class MetadataModel:
 def multiglob(path: pathlib.Path, data_rules: DataRulesWrapper):
     # Glob whole tree and then match against the data rules, in given order
     all_files = path.glob("**/*")
-    for f, dr in data_rules.match_files(all_files):
-        if f.is_file():
-            stat = f.stat()
-            yield f, dr, stat.st_mtime, stat.st_size
+    all_rel_files = map(lambda x: x.relative_to(path), all_files)
+
+    for f, dr in data_rules.match_files(all_rel_files):
+        abspath = path / f
+        if abspath.is_file():
+            stat = abspath.stat()
+            yield abspath, dr, stat.st_mtime, stat.st_size
             

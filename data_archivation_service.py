@@ -19,8 +19,6 @@ class DataArchivationService(experiment.ExperimentModuleBase):
             exp_engine.exp.storage.state = experiment.StorageState.ARCHIVED
             return
         
-        print(f"ARCHIVE {exp_engine.exp.secondary_id} Temporarily disabled archivation")
-        return
     
         exp_config = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)
         exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
@@ -35,7 +33,6 @@ class DataArchivationService(experiment.ExperimentModuleBase):
 
         # Archive (=move) data
         try:
-            print("ARCH", exp_engine.exp.secondary_id, exp_engine.irods_collection.collection_path, exp_engine.connection_config)
             archive_data_rules = exp_engine.data_rules.with_tags("archive")
             transfers, errs = exp_engine.transfer_to(exp_target_storage, archive_data_rules, transfer_action=TransferAction.MOVE, session_name=f"archivation_to_{exp_target_storage_engine.replace('/', '_')}")
             if errs:
@@ -47,7 +44,8 @@ class DataArchivationService(experiment.ExperimentModuleBase):
             return
         
         # From now, data is safely transfered to the new storage, we can purge the old one
-        exp_engine.purge()
+        # exp_engine.purge()
+        print("Would purge")
 
         # Update experiment storage info with new access storage
         exp_engine.exp.exp_api.patch_experiment({
