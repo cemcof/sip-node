@@ -47,8 +47,6 @@ node_name = arguments.node_name if arguments.node_name else socket.gethostname()
 debug_mode = bool(arguments.debug_mode)
 config = configuration.LimsConfigWrapper(arguments.organization_name, node_name)
 
-
-
 if arguments.config_file:
     config.from_file(arguments.config_file)
     is_config_master = True
@@ -81,12 +79,14 @@ def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: conf
         import irods_storage_engine
         return irods_storage_engine.irods_storage_engine_factory(exp, e_config, logger, module_config, engine)
 
-
+# Prepare logger handler for saving logs to SIP server and make it run on separate thread
+sip_logger_handler = logger_db_api.LimsApiLoggerHandler(lims_api_session_provider(), logging.INFO)
+threading.Thread(target=sip_logger_handler.keep_flushing, daemon=True).start()
 
 def make_module(cls, conf):
     name = conf["target"]
     logger = logging.getLogger(conf["target"])
-    lims_logger = logger_db_api.prepare_lims_api_logger("lims/" + conf["target"], node_name, lims_api_session_provider())
+    lims_logger = logger_db_api.prepare_lims_api_logger("lims/" + conf["target"], node_name, sip_logger_handler)
     module_config = configuration.LimsModuleConfigWrapper(name, node_name, config)
     if issubclass(cls, experiment.ExperimentModuleBase):
         return cls(name, logger, lims_logger, module_config, lims_api_session_provider(), exp_storage_engine_factory)
@@ -97,7 +97,7 @@ def make_config_syncer(config_syncer_class):
     conf_syncer = config_syncer_class(
     config_syncer_class.__module__ + "." + config_syncer_class.__name__, 
     logging.getLogger("config_syncer"), 
-    logger_db_api.prepare_lims_api_logger("lims_config_syncer", node_name, lims_api_session_provider()),
+    logger_db_api.prepare_lims_api_logger("lims_config_syncer", node_name, sip_logger_handler),
     configuration.LimsModuleConfigWrapper(None, node_name, config), lims_api_session_provider()
     ) 
     return conf_syncer
