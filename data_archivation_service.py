@@ -24,8 +24,12 @@ class DataArchivationService(experiment.ExperimentModuleBase):
         exp_target_storage: experiment.ExperimentStorageEngine = self.exp_storage_engine_factory(exp_engine.exp, exp_config, exp_engine.logger, self.module_config, exp_target_storage_engine)
 
         # Check that both storages are accessible
-        if not exp_engine.is_accessible() or not exp_target_storage.is_accessible():
-            self.logger.warn("One of the storages is not accessible")
+        if not exp_engine.is_accessible():
+            self.logger.warning(f"Source storage {exp_engine} not accessible")
+            return
+            
+        if not exp_target_storage.is_accessible():
+            self.logger.warning(f"Target storage {exp_target_storage} not accessible")
             return
         
         # Set state that we are archiving this experiment 
@@ -55,6 +59,8 @@ class DataArchivationService(experiment.ExperimentModuleBase):
                 **exp_target_storage.get_access_info()
             }
         })
+
+        
 
         # Send notification email that the archivation was done 
         email_conf = self.module_config.lims_config.get_experiment_config(exp_engine.exp.instrument, exp_engine.exp.technique)["DataArchived"]

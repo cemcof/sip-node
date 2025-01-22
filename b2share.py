@@ -198,7 +198,7 @@ class B2SharePublicationService(experiment.ExperimentModuleBase):
             # We need to get the metadata 
             # USE ONLY NOW FOR TESTING
             # Draft for the experiment must exist
-            print(f"Temporarily disabled {exp_engine.exp.secondary_id}")
+            # print(f"Temporarily disabled {exp_engine.exp.secondary_id}")
             return 
             exp_engine.restore_metadata(exp_engine.extract_metadata())
             metadata = exp_engine.read_metadata()

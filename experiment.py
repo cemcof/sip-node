@@ -183,7 +183,7 @@ class ExperimentDataSourceWrapper:
         for p in pattlist:
             # Current policy is: if pattern does not contain any / nor *, consider it as a full glob
             # and prepend **/* to it
-            yield p if "/" in p or "*" in p else "**/*" + p
+            yield p if "/" in p or "*" in p else "*" + p
     
     @property
     def clean_after(self):
@@ -634,6 +634,7 @@ class ExperimentStorageEngine:
                 self.del_file(source_path_relative)
         
         tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
+        print(tmp_file)
         sniffer = DataRulesSniffer(self.glob, data_rules, transfer_consumer, tmp_file)
         return sniffer.sniff_and_consume()
 
