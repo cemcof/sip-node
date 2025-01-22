@@ -720,14 +720,20 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
         exp_config = self.module_config.lims_config.get_experiment_config(e.instrument, e.technique)
          
         return self.exp_storage_engine_factory(e, exp_config, exp_logger, self.module_config)
-    
+
+    @property
+    def parallel(self):
+        str_val = self.module_config.get("parallel", 0)
+        return int(str_val)
+
     @property
     def is_parallel(self):
-        return self.module_config.get("parallel", False)
+        return self.parallel > 0 or self.parallel == -1
     
     def _clean_finished_threads(self):
         for exp_id, thrd in list(self.exec_state.items()):
             if not thrd.is_alive():
+                self.logger.debug(f"Finished thread for experiment {exp_id}")
                 del self.exec_state[exp_id]
     
     def step(self):
@@ -742,11 +748,15 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
                 self.logger.exception(e)
 
         def wrap_step_parallel(exp_engine):
+            if len(self.exec_state) >= self.parallel != -1:
+                return
+
             if exp_engine.exp.id in self.exec_state:
                 return
-            thrd = threading.Thread(target=step_exp_helper, args=(exp_engine,))
-            thrd.start()
-            self.exec_state[exp_engine.exp.id] = thrd
+
+            thread = threading.Thread(target=step_exp_helper, args=(exp_engine,))
+            thread.start()
+            self.exec_state[exp_engine.exp.id] = thread
 
         for e in experiments:
             try:
