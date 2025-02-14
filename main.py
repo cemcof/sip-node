@@ -20,6 +20,14 @@ import experiment
 # // U scipionu udelat queue i nonqueue variantu na ciisb pouzit queue variantu
 # // Ukoncovani processingui  
 
+# For debugging stuck threads
+import faulthandler
+import signal
+
+# Trigger a stack trace when SIGUSR1 is received
+signal.signal(signal.SIGUSR1, lambda sig, frame: faulthandler.dump_traceback())
+
+
 aparser = argparse.ArgumentParser(
     prog = 'lims-node',
     description = 'LIMS processing/controlling node',
