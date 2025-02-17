@@ -1,5 +1,8 @@
 """ Tools and utilities for sniffing files, transfering files or continually reading files while writing to them from another process """
 import asyncio
+import concurrent
+import random
+import threading
 from datetime import datetime
 from enum import Enum
 import logging
@@ -306,18 +309,7 @@ class DataTransferSimulator:
             self.logger.info(f"[{current_index}/{len(self.filelist)} ({(current_index/len(self.filelist)):.2%})] Transfered {f} to {dst}")
 
 
-# Basic test
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger("transfer_simulator")
 
-    import sys
-    src = sys.argv[1]
-    dst = sys.argv[2]
-    logger.info(f"Creating simulator for {src} -> {dst}")
-    simulator = DataTransferSimulator(pathlib.Path(src), pathlib.Path(dst), logger)
-    simulator.transfer()
-    
 
 """ Used by filebrowser, refactor to pathlib """
 def map_direntry(direntry):
@@ -603,4 +595,72 @@ def multiglob(path: pathlib.Path, data_rules: DataRulesWrapper):
         if abspath.is_file():
             stat = abspath.stat()
             yield abspath, dr, stat.st_mtime, stat.st_size
-            
+
+
+# Basic test
+if __name__ == "__main__":
+
+    # Simulate a blocking file copy operation (asynchronously in a separate thread)
+    def sleep_random_time(min_seconds, max_seconds):
+        """ Simulates a random blocking operation by sleeping for a random amount of time """
+        sleep_time = random.uniform(min_seconds, max_seconds)
+        print(f"Slept for {sleep_time:.2f} seconds")
+        return sleep_time  # Return the sleep time for logging purposes
+
+
+    async def transfer_file(file_path, destination, wait_times, executor):
+        """ A function that simulates the pipelined transfer of a file, with random sleep times """
+        start_time, copy_wait_time, checksum_wait_time, delete_wait_time = wait_times
+        st = time.time()
+        # 1. Simulate the start of the file transfer
+        print(f"{file_path} Prewaitng")
+        await asyncio.sleep(3)
+        print(f"{file_path} Starting transfer for {file_path}...")
+        await asyncio.get_running_loop().run_in_executor(executor, time.sleep, 5)
+        print(f"{file_path} Transfer action for finished")
+        await asyncio.sleep(3)
+        print(f"{file_path} Checksum start")
+        await asyncio.get_running_loop().run_in_executor(executor, time.sleep, 5 )
+        print(f"{file_path} Finished took {time.time() - st:.2f}s ")
+        await asyncio.to_thread()
+
+
+
+    async def run_file_transfers(files, destination, wait_times, executor):
+        """ Function to schedule multiple file transfers concurrently """
+        tasks = []
+        for file in files:
+            task = asyncio.create_task(transfer_file(file, destination, wait_times, executor))
+            tasks.append(task)
+
+        # Wait for all tasks to finish
+        await asyncio.gather(*tasks)
+
+
+    async def main():
+        # Example usage
+        files = [f"{i}" for i in range(1, 10)]  # Simulate file names
+        destination = "/destination/directory"
+        wait_times = (2, 3, 1, 2)  # (start_wait, copy_wait, checksum_wait, delete_wait)
+
+        # Create a ThreadPoolExecutor with 1 worker
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit()
+            # Run file transfers concurrently
+            await run_file_transfers(files, destination, wait_times, executor)
+
+
+    # Run the asyncio program
+    asyncio.run(main())
+    #
+    # logging.basicConfig(level=logging.DEBUG)
+    # logger = logging.getLogger("transfer_simulator")
+    #
+    # import sys
+    #
+    # src = sys.argv[1]
+    # dst = sys.argv[2]
+    # logger.info(f"Creating simulator for {src} -> {dst}")
+    # simulator = DataTransferSimulator(pathlib.Path(src), pathlib.Path(dst), logger)
+    # simulator.transfer()
