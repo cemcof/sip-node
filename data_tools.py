@@ -1,5 +1,5 @@
 """ Tools and utilities for sniffing files, transfering files or continually reading files while writing to them from another process """
-
+import asyncio
 from datetime import datetime
 from enum import Enum
 import logging
@@ -34,6 +34,8 @@ class DataRule:
                  subfiles=True, 
                  action: typing.Union[str, TransferAction] = TransferAction.COPY,
                  condition: typing.Union[str, TransferCondition] = TransferCondition.IF_MISSING,
+                 checksum = True,
+                 delay = 1.0,
                 ) -> None:
         self.patterns = as_list(patterns)
         self.tags = as_list(tags)
@@ -42,6 +44,8 @@ class DataRule:
         self.action = TransferAction(action)
         self.condition = TransferCondition(condition)
         self.subfiles = subfiles
+        self.checksum = checksum
+        self.delay = delay
 
     def translate_to_target(self, path_relative: pathlib.Path):
         if self.target:
@@ -206,114 +210,70 @@ class DataRulesSniffer:
 
 
 
-class DataSyncUnit:
-    def __init__(self, src_path : pathlib.Path, dst_path : pathlib.Path, logger):
-        self.src_path = src_path
-        self.dst_path = dst_path
-        self.logger = logger
-        self.transfer_time_secs = -1
+class DataTransferTarget:
+    def stat(self):
+        raise NotImplementedError()
 
-    def is_transfer_ready(self, last_modified_max_timestamp):
-        exists = self.src_path.exists()
-        if not exists:
-            return False
-        modified = self.src_path.stat().st_mtime
-        return modified < last_modified_max_timestamp and (not self.dst_path.exists() or self.dst_path.stat().st_mtime < modified)
+class DataTransferSource(DataTransferTarget):
+    def glob(self, data_rules: DataRulesWrapper) -> typing.Iterable[pathlib.Path]:
+        raise NotImplementedError()
 
-    def transfer(self, remove_source=False):
-        if not self.dst_path.parent.exists():
-            self.dst_path.parent.mkdir(parents=True, exist_ok=True)
-        self.transfer_time_secs = -1    
-        tstart = time.time()
-        shutil.copy(self.src_path, self.dst_path)
-        if remove_source:
-            self.src_path.unlink(missing_ok=True)
 
-        self.transfer_time_secs = time.time() - tstart
+class DataAsyncTransferer:
+    def __init__(self,
+                 source: DataTransferSource,
+                 target: DataTransferTarget,
+                 data_rules: DataRulesWrapper,
+                 metafile: pathlib.Path = None,
+                 on_start = None,
+                 on_finish = None,
+                 on_file_done = None):
+        self.source = source
+        self.target = target
+        self.data_rules = data_rules
+        self.metafile = metafile
+        self.on_start = on_start or (lambda: None)
+        self.on_finish = on_finish or (lambda: None)
+        self.on_file_done = on_file_done or (lambda: None)
 
-    
-class DirectorySniffer:
-    def __init__(self, path: pathlib.Path, patterns, min_nochange_secs=15) -> None:
-        self._path = path
-        self.total_sniff_count = 0
-        self.patterns = patterns
-        self.min_nochange_secs = min_nochange_secs
+        self.executor = common.PriorityThreadPoolExecutor()
+        self.ev_loop = None
 
-    def sniff(self):
-        self.total_sniff_count = self.total_sniff_count + 1
-        for patt in self.patterns:
-            fpaths = self._path.glob(patt)
-            for pth in fpaths:
-                if pth.is_file() and (time.time() - self._path.stat().st_mtime) >= self.min_nochange_secs:
-                    yield pth
+    def _load_metafile(self):
+        if self.metafile and self.metafile.exists():
+            with self.metafile.open("r") as metafile:
+                return yaml.full_load(metafile)
+        return None
 
-class DataSniffer:
-    def __init__(self, sniffer, consumer) -> None:
+    def should_exclude(self, path: pathlib.Path, haha=5):
+        return path.name.startswith("_")
+
+    def _submit(self):
+        asyncio.wrap_future()
         pass
 
-class DataTransferer:
-    """
-    A class capable of transfering files from one filesystem location to another.
-    The transfer is supposed to be executed in intervals. 
-    Each interval execution observes the source directory and copies files that are ready.
-    A file is considered ready when for specified period of time (min_nochange_sec) it was not modified.
-    This allows this transferer to handle files that are still being written to by the source. 
-    """
-    def __init__(self, src_path: pathlib.Path, dst_path: pathlib.Path, patterns: list, logger, 
-                 remove_source=False, min_nochange_secs=15, done_after_no_source_secs=30,
-                 target_resolver=None):
-        if src_path == dst_path:
-            raise ValueError(f"DataSynchronizer: src_path and dst_path must not be the same")
-        
-        def default_target_resolver(src_path_relative: pathlib.Path):
-            return self.dst_path / src_path_relative
-        
-        self.target_resolver = target_resolver or default_target_resolver
-        self.src_path = src_path
-        self.dst_path = dst_path
-        self.patterns = patterns
-        self.logger = logger
-        self.remove_source = remove_source
-        self.min_nochange_secs = min_nochange_secs
-        self.dt_last_file_transfered = None
-        self.done_after_no_source_secs = done_after_no_source_secs
-        self.total_sniff_count = 0
-        self.successful_transfers = []
+    async def transfer_unit(self):
+        pass
 
-        # Ensure base paths exist
-        src_path.mkdir(parents=True, exist_ok=True)
+    async def transfer_all(self):
+        consumation_start = time.time()
+        meta = self._load_metafile() or {}
+        errors = []
+        metafile_append = self.metafile.open("a") if self.metafile else None
+        for f, dr in self.source.glob(self.data_rules):
+            if self.should_exclude(f):
+                continue
+            time_change = f.stat().st_mtime
+            consumed_time = meta.get(str(f), None)
+            now = time.time()
 
-        if dst_path:
-            dst_path.mkdir(parents=True, exist_ok=True)
-
-    def sniff(self):
-        self.total_sniff_count = self.total_sniff_count + 1
-        for patt in self.patterns:
-            fpaths = self.src_path.glob(patt)
-            for pth in fpaths:
-                if pth.is_file():
-                    rel = pth.relative_to(self.src_path)
-                    dst = self.target_resolver(rel)
-                    yield DataSyncUnit(pth, dst, logger=self.logger)
+        pass
 
     def transfer(self):
-        max_modified = time.time() - self.min_nochange_secs
-        total_files = 0
-        total_size = 0
-        for fileinfo in self.sniff():
-            if fileinfo.is_transfer_ready(max_modified):
-                fileinfo.transfer(self.remove_source)
-                self.dt_last_file_transfered = datetime.datetime.utcnow()
-                self.successful_transfers.append(fileinfo)
-                fsize = fileinfo.dst_path.stat().st_size
-                total_size = total_size + fsize
-                total_files = total_files + 1
-                self.logger.info(f"Transfered {common.sizeof_fmt(fsize)} file {fileinfo.src_path} to {fileinfo.dst_path} in {fileinfo.transfer_time_secs:.3f}s")
-
-        return self.is_finished()
-
-    def is_finished(self):
-        return False # TODO  return datetime.datetime.utcnow() - self.dt_last_file_transfered 
+        self.ev_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.ev_loop)
+        result = self.ev_loop.run_until_complete(self.transfer_all())
+        return result
 
 
 class DataTransferSimulator:
