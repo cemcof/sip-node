@@ -39,6 +39,7 @@ class DataRule:
                  condition: typing.Union[str, TransferCondition] = TransferCondition.IF_MISSING,
                  checksum = True,
                  delay = 1.0,
+                 del_delay = 0.5
                 ) -> None:
         self.patterns = as_list(patterns)
         self.tags = as_list(tags)
@@ -49,6 +50,7 @@ class DataRule:
         self.subfiles = subfiles
         self.checksum = checksum
         self.delay = delay
+        self.del_delay = 0.5
 
     def translate_to_target(self, path_relative: pathlib.Path):
         if self.target:
@@ -214,13 +216,25 @@ class DataRulesSniffer:
 
 
 class DataTransferTarget:
-    def stat(self):
+    def stat(self, path: pathlib.Path) -> typing.Tuple[int, float]:
         raise NotImplementedError()
+
+    def checksum(self, path: pathlib.Path) -> str:
+        raise NotImplementedError()
+
+    def supported_checksums(self) -> typing.List[str]:
+        raise NotImplementedError()
+
+    def resolve_target_location(self):
+        raise NotImplementedError()
+
 
 class DataTransferSource(DataTransferTarget):
     def glob(self, data_rules: DataRulesWrapper) -> typing.Iterable[pathlib.Path]:
         raise NotImplementedError()
 
+class TargetNotSameSizeOrModifyError(Exception):
+    pass
 
 class DataAsyncTransferer:
     def __init__(self,
@@ -230,7 +244,8 @@ class DataAsyncTransferer:
                  metafile: pathlib.Path = None,
                  on_start = None,
                  on_finish = None,
-                 on_file_done = None):
+                 on_file_done = None,
+                 retransfer_on_change = True):
         self.source = source
         self.target = target
         self.data_rules = data_rules
@@ -238,6 +253,7 @@ class DataAsyncTransferer:
         self.on_start = on_start or (lambda: None)
         self.on_finish = on_finish or (lambda: None)
         self.on_file_done = on_file_done or (lambda: None)
+        self.retransfer_on_change = retransfer_on_change
 
         self.executor = common.PriorityThreadPoolExecutor()
         self.ev_loop = None
@@ -251,30 +267,118 @@ class DataAsyncTransferer:
     def should_exclude(self, path: pathlib.Path, haha=5):
         return path.name.startswith("_")
 
-    def _submit(self):
-        asyncio.wrap_future()
+    def _transfer_helper_download(self):
         pass
 
-    async def transfer_unit(self):
+    def _transfer_helper_upload(self):
         pass
+
+    def _transfer_helper_buffer_file(self):
+        pass
+
+    def _transfer_helper_fs_direct(self):
+        pass
+
+    def _transfer_helper(self):
+        src_loc, trg_loc = self.source.resolve_target_location(), self.target.resolve_target_location()
+        if src_loc and not trg_loc:
+            # Target not available but source yes - direct upload...
+            pass
+
+        if not src_loc and trg_loc:
+            # Source not available but target yes - direct download...
+            pass
+
+        if src_loc and trg_loc:
+            # Both available - direct fs copy/move
+            pass
+
+        if not src_loc and not trg_loc:
+
+    async def transfer_unit(self, file: pathlib.Path, strategy: callable, data_rule: DataRule, order: int):
+        initial_size, initial_modify = self.source.stat(file)
+        data_rule.condition
+        initial_time = time.time()
+
+        # Keep sleeping delay until stat matches
+        while True:
+            await asyncio.sleep(data_rule.delay)
+            stat = self.source.stat(file)
+            if stat == (initial_size, initial_modify):
+                break
+            initial_size, initial_modify = stat
+
+        # Now, file is likely ready, commence transfer
+        await self.executor.submit(strategy, file, data_rule, priority=order)
+
+        # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
+        if self.source.stat(file) != (initial_size, initial_modify):
+            raise TargetNotSameSizeOrModifyError()
+
+        # Correct, lets do checksum if desired...
+        if data_rule.checksum:
+            pass
+
+        # Everything good here, we can wait a bit and delete source file if desired.
+        await asyncio.sleep(data_rule.del_delay)
+
+        # Delete action
+        await self.executor.submit(self.source.del_file, file, priority=order)
+
+        # Yeah! Transfer done, no exception, return times it took and size
+        return file, time.time() - initial_time, initial_size, initial_modify
+
+
 
     async def transfer_all(self):
         consumation_start = time.time()
         meta = self._load_metafile() or {}
         errors = []
+        successes = []
         metafile_append = self.metafile.open("a") if self.metafile else None
-        for f, dr in self.source.glob(self.data_rules):
+        tasks = []
+
+        # Go through globbed files and if desirable schedule the transfer
+        for f, dr, size, modif in self.source.glob(self.data_rules):
             if self.should_exclude(f):
                 continue
-            time_change = f.stat().st_mtime
-            consumed_time = meta.get(str(f), None)
-            now = time.time()
+            last_transfer_modtime = meta.get(str(f), None)
 
-        pass
+            # We do not transfer if not modified
+            if self.retransfer_on_change and last_transfer_modtime == modif:
+                continue
 
-    def transfer(self):
+            # We do not transfer if already transfered
+            if not self.retransfer_on_change and last_transfer_modtime is not None:
+                continue
+
+            # Transfer this unit (schedule)
+            tsk = self.ev_loop.create_task(self.transfer_unit(f, dr, len(tasks)))
+            tasks.append(tsk)
+
+        # Now, wait for the transfer tasks and react to their result
+        for tsk in asyncio.as_completed(tasks):
+            f = None
+            try:
+                result = await tsk
+                f, took, size, modif = result
+                # Success - mark this file as done
+                meta[str(f)] = modif
+                successes.append((f, modif)) # TODO what?
+                if metafile_append:
+                    metafile_append.write(f"{str(f)}: {modif}\n")
+                    metafile_append.flush()
+
+            except Exception as e:
+                errors.append((f, e))
+
+        return successes, errors
+
+
+    def transfer(self, until=None):
         self.ev_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.ev_loop)
+
         result = self.ev_loop.run_until_complete(self.transfer_all())
         return result
 
@@ -600,58 +704,28 @@ def multiglob(path: pathlib.Path, data_rules: DataRulesWrapper):
 # Basic test
 if __name__ == "__main__":
 
-    # Simulate a blocking file copy operation (asynchronously in a separate thread)
-    def sleep_random_time(min_seconds, max_seconds):
-        """ Simulates a random blocking operation by sleeping for a random amount of time """
-        sleep_time = random.uniform(min_seconds, max_seconds)
-        print(f"Slept for {sleep_time:.2f} seconds")
-        return sleep_time  # Return the sleep time for logging purposes
+    async def task(n):
+        delay = random.uniform(1, 4)
+        print(f"Task {n} step 0, delay {delay}")
+        await asyncio.sleep(delay)
+        print( f"Task {n} step 1")
+        await asyncio.sleep(delay)
+        print( f"Task {n} step 2")
+        await asyncio.sleep(delay)
+        return f"Task {n} done"
 
 
-    async def transfer_file(file_path, destination, wait_times, executor):
-        """ A function that simulates the pipelined transfer of a file, with random sleep times """
-        start_time, copy_wait_time, checksum_wait_time, delete_wait_time = wait_times
-        st = time.time()
-        # 1. Simulate the start of the file transfer
-        print(f"{file_path} Prewaitng")
-        await asyncio.sleep(3)
-        print(f"{file_path} Starting transfer for {file_path}...")
-        await asyncio.get_running_loop().run_in_executor(executor, time.sleep, 5)
-        print(f"{file_path} Transfer action for finished")
-        await asyncio.sleep(3)
-        print(f"{file_path} Checksum start")
-        await asyncio.get_running_loop().run_in_executor(executor, time.sleep, 5 )
-        print(f"{file_path} Finished took {time.time() - st:.2f}s ")
-        await asyncio.to_thread()
-
-
-
-    async def run_file_transfers(files, destination, wait_times, executor):
-        """ Function to schedule multiple file transfers concurrently """
-        tasks = []
-        for file in files:
-            task = asyncio.create_task(transfer_file(file, destination, wait_times, executor))
-            tasks.append(task)
-
-        # Wait for all tasks to finish
-        await asyncio.gather(*tasks)
 
 
     async def main():
-        # Example usage
-        files = [f"{i}" for i in range(1, 10)]  # Simulate file names
-        destination = "/destination/directory"
-        wait_times = (2, 3, 1, 2)  # (start_wait, copy_wait, checksum_wait, delete_wait)
+        # [asyncio.create_task(task(i)) for i in range(5)]
+        for coro in asyncio.as_completed([asyncio.create_task(task(i)) for i in range(5)]):
+            result = await coro
+            print(result)
 
-        # Create a ThreadPoolExecutor with 1 worker
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            executor.submit()
-            # Run file transfers concurrently
-            await run_file_transfers(files, destination, wait_times, executor)
+        await asyncio.sleep(10)
 
 
-    # Run the asyncio program
     asyncio.run(main())
     #
     # logging.basicConfig(level=logging.DEBUG)

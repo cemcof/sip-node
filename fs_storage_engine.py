@@ -113,6 +113,9 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         for f, dr, m, s in data_tools.multiglob(target, data_rules):
             yield f.relative_to(target), dr, m, s
 
+    def checksum(self, path_relative: pathlib.Path):
+        pass
+
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)
     if not conf:

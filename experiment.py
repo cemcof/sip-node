@@ -459,7 +459,7 @@ class ExperimentDocumentWrapper:
     def upload_files(self, data, append=False):
         return self.exp_api.upload_document_files(self.id, data, append=append)
 
-class ExperimentStorageEngine:
+class ExperimentStorageEngine():
     def __init__(self, 
                  experiment: ExperimentWrapper, 
                  logger: logging.Logger,
