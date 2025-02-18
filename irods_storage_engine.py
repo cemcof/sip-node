@@ -195,34 +195,34 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self.irods_collection.ensure_exists()
 
     def read_file(self, path_relative: pathlib.Path, as_text=True):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.read_file(path_relative, as_text)
         return self.irods_collection.read_file(path_relative, as_text)
     
     def write_file(self, path_relative: pathlib.Path, content):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             self.fs_underlying_storage.write_file(path_relative, content)
         else:
             self.irods_collection.ensure_exists(self.irods_collection.collection_path / path_relative.parent)
             self.irods_collection.write_file(path_relative, content)
     
     def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, condition: TransferCondition = TransferCondition.IF_MISSING):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.put_file(path_relative, src_file, condition)
         return self.irods_collection.ensure_file(src_file, path_relative, replace=condition != TransferCondition.IF_MISSING)
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.get_file(path_relative_src, path_dst)
         return self.irods_collection.get_file(path_relative_src, path_dst)
 
     def file_exists(self, path_relative: pathlib.Path):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.file_exists(path_relative)
         return self.irods_collection.exists(path_relative)
     
     def del_file(self, path_relative: pathlib.Path):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.del_file(path_relative)
         
         self.irods_collection.unlink_file(path_relative)
@@ -231,11 +231,23 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         self.irods_collection.drop_collection()
     
     def glob(self, data_rules: data_tools.DataRulesWrapper):
-        if (self.fs_underlying_storage):
+        if self.fs_underlying_storage:
             return self.fs_underlying_storage.glob(data_rules)
         files = { pathlib.Path(dobject.path).relative_to(self.irods_collection.collection_path) : dobject for dobject in self.irods_collection.walk() }
         for f, dr in data_rules.match_files(files.keys()):
             yield f, dr, files[f].modify_time.timestamp(), files[f].size # TODO - maybe old meta values for longer processing
+
+    def stat(self, path_relative: pathlib.Path):
+        if self.fs_underlying_storage:
+            return self.fs_underlying_storage.stat(path_relative)
+        dataobj = self.irods_collection.collection.data_objects.get(str(path_relative))
+        return dataobj.size, dataobj.modify_time.timestamp()
+
+    def supported_checksums(self):
+        raise NotImplementedError()
+
+    def checksum(self, path_relative: pathlib.Path, sumtype: str):
+        raise NotImplementedError()
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)
