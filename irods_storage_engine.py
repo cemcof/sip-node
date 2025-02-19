@@ -1,5 +1,8 @@
-
+import base64
 import pathlib, yaml, datetime, logging
+
+from irods.keywords import FORCE_CHKSUM_KW
+
 import common
 from data_tools import TransferCondition
 import data_tools
@@ -230,7 +233,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def purge(self):
         self.irods_collection.drop_collection()
     
-    def glob(self, data_rules: data_tools.DataRulesWrapper):
+    def glob(self, data_rules: data_tools.DataRulesWrapper=None):
         if self.fs_underlying_storage:
             return self.fs_underlying_storage.glob(data_rules)
         files = { pathlib.Path(dobject.path).relative_to(self.irods_collection.collection_path) : dobject for dobject in self.irods_collection.walk() }
@@ -244,10 +247,25 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         return dataobj.size, dataobj.modify_time.timestamp()
 
     def supported_checksums(self):
-        raise NotImplementedError()
+        return ['sha256']
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
-        raise NotImplementedError()
+        if self.fs_underlying_storage:
+            return self.fs_underlying_storage.checksum(path_relative, sumtype)
+
+        if sumtype not in self.supported_checksums():
+            raise ValueError(f"Checksum type {sumtype} not supported by iRODS")
+
+        dataobj = self.irods_collection.collection.data_objects.get(str(path_relative))
+        sum = dataobj.chksum(FORCE_CHKSUM_KW='')
+        prefix, basehash = sum[0:5], sum[5:]
+        if prefix == 'sha2:':
+            # To hex
+            raw_hash = base64.b64decode(basehash)
+            return raw_hash.hex()
+        else:
+            raise ValueError(f"Invalid checksum format: {sum}")
+
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)
@@ -303,6 +321,10 @@ if __name__ == "__main__":
             tar.parent.mkdir(parents=True, exist_ok=True)
             colw.get_file(src, target / src)
             print("Downloaded", src, "to", tar)
+
+    def checksum(path: pathlib.Path):
+        dataobj = sess.data_objects.get(str(home / path))
+        print(dataobj.chksum({ FORCE_CHKSUM_KW: '' }))
 
     sess.pam_pw_negotiated
 

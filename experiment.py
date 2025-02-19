@@ -8,6 +8,8 @@ import common, configuration
 import json
 import datetime
 import requests
+
+import data_tools
 import logger_db_api
 import datetime
 import enum
@@ -15,7 +17,8 @@ import uuid
 import threading
 import inspect, tempfile
 from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, list_directory
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, \
+    list_directory, DataAsyncTransferer
 
 
 class JobState(enum.Enum):
@@ -459,7 +462,7 @@ class ExperimentDocumentWrapper:
     def upload_files(self, data, append=False):
         return self.exp_api.upload_document_files(self.id, data, append=append)
 
-class ExperimentStorageEngine():
+class ExperimentStorageEngine(data_tools.DataTransferSource):
     def __init__(self, 
                  experiment: ExperimentWrapper, 
                  logger: logging.Logger,
@@ -598,20 +601,9 @@ class ExperimentStorageEngine():
     
     def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
         data_rules = data_rules or self.data_rules
-        def download_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
-            absolute_target = target / data_rule.translate_to_target(source_path_relative)
-            absolute_source = self.resolve_target_location(source_path_relative)
-            # Skip if target is same as the source 
-            print("DW SKIPCHECK", absolute_source, absolute_target)
-            if absolute_source is not None and absolute_target == absolute_source:
-                return
-            absolute_target.parent.mkdir(parents=True, exist_ok=True)
-            self.get_file(source_path_relative, absolute_target)
+        transferer = DataAsyncTransferer(self, data_tools.FsTransferSource(target), data_rules, f"{session_name}_{self.exp.secondary_id}")
+        return transferer.transfer()
 
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
-        sniffer = DataRulesSniffer(self.glob, data_rules, download_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
-    
     def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, transfer_action: TransferAction=TransferAction.COPY):
         """ Transfer data from this storage to another """
         if data_rules is None:

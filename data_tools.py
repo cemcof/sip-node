@@ -447,7 +447,6 @@ class DataAsyncTransferer:
             last_transfer_modtime = meta.get(str(f), None)
 
             # We do not transfer if not modified
-            TransferCondition.
             if self.retransfer_on_change and last_transfer_modtime == modif:
                 continue
 
