@@ -510,26 +510,6 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
              metastr
         )
 
-    # TODO del?
-    # def determine_relative_target(self, source_file_relative: pathlib.Path, tag=None):
-
-    #     for rule in self.data_rules.with_tags(tag):
-        
-    #         # Does the path match?
-    #         pattens = rule["Patterns"]
-    #         matched = any([fnmatch.fnmatch(str(source_file_relative), p) for p in pattens])
-
-    #         if matched:
-    #             target = pathlib.Path(rule["Target"])
-    #             keep_tree = rule["KeepTree"] if "KeepTree" in rule else False
-    #             if keep_tree:
-    #                 return target / source_file_relative
-    #             else:
-    #                 return target / source_file_relative.name
-
-    #     # No data rule match? Leave it as is
-    #     return source_file_relative
-    
     def get_tag_target_dir(self, *tags):
         dr = self.data_rules.with_tags(*tags)
         if not dr: 
@@ -572,33 +552,14 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         raw_rules = self.exp.data_source.get_combined_raw_datarules(raw_rules)
         return self.upload(source_path, raw_rules, session_name="raw")
 
-    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, log=True):
-        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRule):
-            try:
-                relative_target = data_rule.translate_to_target(source_path.relative_to(source))
-                absolute_target = self.resolve_target_location(relative_target)
-                # Skip if target is same as the source 
-                # print("UP SKIPCHECK", source_path, absolute_target)
-                if absolute_target is not None and absolute_target == source_path:
-                    return
-                put_result = self.put_file(relative_target, source_path, condition=data_rule.condition)
-                if put_result:
-                    tdelta, fsize = put_result
-                    if log:
-                        self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
-                    if data_rule.action == TransferAction.MOVE:
-                        try:
-                            source_path.unlink()
-                        except Exception as e: 
-                            self.logger.error(f"Failed to remove {source_path}: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to transfer {source_path} to {relative_target}: {e}")
-                raise
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None):
 
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}.dat" if session_name else None
-        sniffer = DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
-    
+        transferer = DataAsyncTransferer(data_tools.FsTransferSource(source), self, rules,
+                                         f"{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}",
+                                         self.logger)
+        result = transferer.transfer()
+        return result
+
     def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
         data_rules = data_rules or self.data_rules
         transferer = DataAsyncTransferer(self, data_tools.FsTransferSource(target), data_rules, f"{session_name}_{self.exp.secondary_id}")
@@ -609,26 +570,9 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         if data_rules is None:
             data_rules = DataRulesWrapper([DataRule("**/*", ["all"], keep_tree=True, condition=TransferCondition.ALWAYS)])
 
-        buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.exp.secondary_id}.dat"
-
-        def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
-            source_abs_path = self.resolve_target_location(source_path_relative)
-            target_rel_path = data_rule.translate_to_target(source_path_relative)
-            print("TRANSFER TO: ", source_path_relative, source_abs_path, target_rel_path)
-            if source_abs_path is None:
-                # We do not have access to the file directly in filesystem - need to use buffer file 
-                self.get_file(source_path_relative, buffer_file)
-                target.put_file(target_rel_path, buffer_file, condition=data_rule.condition)
-            else:
-                target.put_file(target_rel_path, source_abs_path, condition=data_rule.condition)
-                
-            if transfer_action == TransferAction.MOVE:
-                self.del_file(source_path_relative)
-        
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
-        print(tmp_file)
-        sniffer = DataRulesSniffer(self.glob, data_rules, transfer_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
+        transferer = DataAsyncTransferer(self, target, data_rules, f"{session_name}_{self.exp.secondary_id}")
+        result = transferer.transfer()
+        return result
 
     def sniff_and_process_metafile(self, source_path):
         source_path = pathlib.Path(source_path)
@@ -639,7 +583,6 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
 
         sniffer = DataRulesSniffer(source_path, meta_rules, sniff_consumer, None, min_nochange_sec=0)
         sniffer.sniff_and_consume()
-
 
     def download_raw(self, target: pathlib.Path):
         dr = DataRule('Raw/**/*.*', "raw", keep_tree=True)

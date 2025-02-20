@@ -153,6 +153,12 @@ class DataRulesWrapper:
             patts_result = patts_result + rule.get_target_patterns()
         return DataRule(patts_result, tags, **rule_args)
 
+    def get_tags_patterns(self):
+        for rule in self.data_rules:
+            for tag in rule.tags:
+                yield tag, rule.patterns
+
+
     def __iter__(self):
         return iter(self.data_rules)
 
@@ -230,12 +236,12 @@ class DataTransferTarget:
     def resolve_target_location(self, path: pathlib.Path = None) -> pathlib.Path:
         raise NotImplementedError()
 
-    def put_file(self, target_path: pathlib.Path, source_path: pathlib.Path, condition: typing.Callable[[pathlib.Path], bool] = None) -> bool:
+    def put_file(self, target_path: pathlib.Path, source_path: pathlib.Path) -> bool:
         raise NotImplementedError()
 
 
 class DataTransferSource(DataTransferTarget):
-    def glob(self, data_rules: DataRulesWrapper) -> typing.Iterable[pathlib.Path]:
+    def glob(self, data_rules: DataRulesWrapper):
         raise NotImplementedError()
 
     def del_file(self, path: pathlib.Path):
@@ -274,29 +280,14 @@ class FsTransferSource(DataTransferSource):
         target = self.resolve_target_location(path_relative)
         target.unlink()
 
-    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path,
-                 condition=TransferCondition.IF_MISSING):
-        if condition == TransferCondition.IF_MISSING and self.exists(path_relative):
-            return False
-
+    def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path):
         target = self.resolve_target_location(path_relative)
-
-        if condition == TransferCondition.IF_NEWER and target.exists() and target.stat().st_mtime >= src_file.stat().st_mtime:
-            return False
-
         # Ensure target directory for the file exists
         target.parent.mkdir(parents=True, exist_ok=True)
-        timestart = time.time()
         shutil.copyfile(src_file, target)
-        took_sec = time.time() - timestart
-        file_size = target.stat().st_size
-        # self.logger.info(f"Transfered file {src_file.name} to the storage. {common.sizeof_fmt(file_size)}, {took_sec:.3f} sec")
-        return took_sec, file_size
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
         file_path = self.resolve_target_location(path_relative)
-        hash_func = None
-
         if sumtype.lower() == "md5":
             hash_func = hashlib.md5()
         elif sumtype.lower() == "sha256":
@@ -325,14 +316,15 @@ class DataAsyncTransferer:
                  target: DataTransferTarget,
                  data_rules: DataRulesWrapper,
                  identifier: str,
+                 logger: logging.Logger=None,
                  on_start = None,
                  on_finish = None,
-                 on_file_done = None,
-                 retransfer_on_change = True):
+                 on_file_done = None):
         self.source = source
         self.target = target
         self.data_rules = data_rules
         self.identifier = identifier
+        self.logger = logger or logging.getLogger("sniff")
         self.metafile = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{identifier}.yml"
         self.on_start = on_start or (lambda: None)
         self.on_finish = on_finish or (lambda: None)
@@ -354,22 +346,25 @@ class DataAsyncTransferer:
         target = self.target.resolve_target_location()
         absolute_target = target / data_rule.translate_to_target(file)
         absolute_target.parent.mkdir(parents=True, exist_ok=True)
-        get_result = self.source.get_file(file, absolute_target)
-        return get_result
+        start_ts = time.time()
+        self.source.get_file(file, absolute_target)
+        return start_ts
 
 
     def _transfer_strategy_upload(self, file: pathlib.Path, data_rule: DataRule):
         source = self.source.resolve_target_location(file)
         relative_target = data_rule.translate_to_target(file)
-        put_result = self.target.put_file(relative_target, source, condition=data_rule.condition)
-        return put_result
+        start_ts = time.time()
+        self.target.put_file(relative_target, source)
+        return time.time() - start_ts
 
     def _transfer_strategy_buffer_file(self, file: pathlib.Path, data_rule: DataRule):
         buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.identifier}.dat"
         # Get into buffer, put from buffer
+        start_ts = time.time()
         self.source.get_file(file, buffer_file)
         self.target.put_file(data_rule.translate_to_target(file), buffer_file)
-        # TODO - return what?
+        return time.time() - start_ts
 
     def _transfer_strategy_fs_direct(self, file: pathlib.Path, data_rule: DataRule):
         # In this strategy, we should skip if locations are same
@@ -377,9 +372,9 @@ class DataAsyncTransferer:
         if source == target:
             return
         # Here we perform standard fs copy
+        start = time.time()
         shutil.copy(source, target)
-        # TODO -return
-        return
+        return time.time() - start
 
     def _determine_transfer_strategy(self):
         src_loc, trg_loc = self.source.resolve_target_location() is not None, self.target.resolve_target_location() is not None
@@ -404,7 +399,7 @@ class DataAsyncTransferer:
             initial_size, initial_modify = stat
 
         # Now, file is likely ready, commence transfer
-        await self.executor.submit(strategy, file, data_rule, priority=order)
+        transfer_time = await self.executor.submit(strategy, file, data_rule, priority=order)
 
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_size, initial_modify):
@@ -422,13 +417,15 @@ class DataAsyncTransferer:
         # Everything good here, we can wait a bit and delete source file if desired.
         await asyncio.sleep(data_rule.del_delay)
 
-        # Delete action
+        # Delete action, currently, if we fail to del, just continue normally and leave it
         if data_rule.action == TransferAction.MOVE:
-            await self.executor.submit(self.source.del_file, file, priority=order)
+            try:
+                await self.executor.submit(self.source.del_file, file, priority=order)
+            except Exception as e:
+                self.logger.warning(f"Failed to delete file {file}, ignoring it: {e}")
 
         # Yeah! Transfer done, no exception, return times it took and size
-        return file, time.time() - initial_time, initial_size, initial_modify
-
+        return file, data_rule, time.time() - initial_time, transfer_time, initial_size, initial_modify
 
 
     async def transfer_all(self):
@@ -441,22 +438,32 @@ class DataAsyncTransferer:
         transfer_strategy = self._determine_transfer_strategy()
 
         # Go through globbed files and if desirable schedule the transfer
-        for f, dr, size, modif in self.source.glob(self.data_rules):
+        total_size_to_transfer = 0
+        for f, dr, modif, size in self.source.glob(self.data_rules):
             if self.should_exclude(f):
                 continue
             last_transfer_modtime = meta.get(str(f), None)
 
             # We do not transfer if not modified
-            if self.retransfer_on_change and last_transfer_modtime == modif:
+            if dr.condition == TransferCondition.IF_NEWER and last_transfer_modtime == modif:
                 continue
 
             # We do not transfer if already transferred
-            if not self.retransfer_on_change and last_transfer_modtime is not None:
+            if dr.condition == TransferCondition.IF_MISSING and last_transfer_modtime is not None:
                 continue
 
             # Transfer this unit (schedule)
             tsk = self.ev_loop.create_task(self.transfer_unit(f, transfer_strategy,  dr, len(tasks)))
             tasks.append(tsk)
+            total_size_to_transfer += size
+
+        # Log what we scanned and queued
+        scanned_patterns = ""
+        for tg, pts in self.data_rules.get_tags_patterns():
+            scanned_patterns += f" {tg}: {'; '.join(pts)}"
+
+        self.logger.info(f"Scanned and queued {len(tasks)} files of total size {common.sizeof_fmt(total_size_to_transfer)} for transfer. "
+                         f"Scanned patterns: {scanned_patterns}")
 
         # Now, wait for the transfer tasks and react to their result
         # TODO - on encountering too many errors, finish - somewhere something is probably broken...
@@ -464,15 +471,17 @@ class DataAsyncTransferer:
             f = None
             try:
                 result = await tsk
-                f, took, size, modif = result
+                f, dr, took, took_transfer, size, modif = result
                 # Success - mark this file as done
                 meta[str(f)] = modif
                 successes.append((f, modif)) # TODO what?
                 if metafile_append:
                     metafile_append.write(f"{str(f)}: {modif}\n")
                     metafile_append.flush()
+                self.logger.info(f"TRANSFER [{', '.join(dr.tags)}]; {common.sizeof_fmt(size)}, {took_transfer:.3f} sec transfer, {took:.3f} total \n {f.name}")
 
             except Exception as e:
+                self.logger.error("File transfer failed: " + str(e))
                 errors.append((f, e))
 
         return successes, errors
