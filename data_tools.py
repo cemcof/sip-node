@@ -296,8 +296,10 @@ class FsTransferSource(DataTransferSource):
             raise ValueError("Unsupported checksum type. Use 'md5' or 'sha256'.")
 
         with open(file_path, "rb") as f:
-            while chunk := f.read(8192):
+            chunk = f.read(8192)
+            while chunk:
                 hash_func.update(chunk)
+                chunk = f.read(8192)
 
         return hash_func.hexdigest()
 

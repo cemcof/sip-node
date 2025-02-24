@@ -1,7 +1,7 @@
 from experiment import ExperimentModuleBase, ProcessingState, ExperimentStorageEngine, ExperimentsApi
 
 
-class CryosparcProcessingHandler(ExperimentModuleBase):
+class CemprocProcessingHandler(ExperimentModuleBase):
 
     def provide_experiments(self):
         exps = ExperimentsApi(self._api_session).get_experiments_by_states(
@@ -18,4 +18,5 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
                       exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
+        print("Processing cemproc! ")
         pass
