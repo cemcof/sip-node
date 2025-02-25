@@ -260,6 +260,20 @@ def lmod_getenv(lmod_path, module_name):
     env_dict = {m[1]: m[4] for m in matches}
     return env_dict
 
+class LmodEnvProvider():
+    def __init__(self, lmod_path) -> None:
+        self.lmod_path = lmod_path
+
+    def __call__(self, *args, **kwargs):
+        return self._lmod_getenv(*args, **kwargs)
+
+    def _lmod_getenv(self, module_name):
+        res = subprocess.run([self.lmod_path, "python", "load", module_name], capture_output=True, text=True, check=True)
+        pattern = r'os\.environ\[("|\')(.*?)("|\')\] = ("|\')(.*?)("|\')'
+        matches = re.findall(pattern, res.stdout)
+        env_dict = {m[1]: m[4] for m in matches}
+        return env_dict
+
 def as_list(item):
     if isinstance(item, list):
         return item
