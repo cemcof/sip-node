@@ -98,7 +98,7 @@ class ExperimentApi:
 
 
 
-class ExperimentProcessingWrapper:
+class ExperimentProcessingWrapper(common.StateObj):
     def __init__(self, processing_data, exp_api: ExperimentApi):
         self.processing_data = processing_data
         self.exp_api = exp_api
@@ -161,6 +161,9 @@ class ExperimentProcessingWrapper:
     @property
     def log_document(self):
         return ExperimentDocumentWrapper(self.processing_data["LogReport"], self.exp_api)
+
+    def get_state(self):
+        return self.state
 
 
 # ------------- Experiment storage ----------------

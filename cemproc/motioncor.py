@@ -1,6 +1,8 @@
 import os
 import pathlib
 
+from common import LmodEnvProvider
+
 
 class MotionCorr2:
     def __init__(self, out_dir: pathlib.Path, voltage, apix, pre_dose, frame_dose, gpu_id, lmod: LmodEnvProvider, executable: str ='MotionCor2'):
