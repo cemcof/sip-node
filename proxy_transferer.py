@@ -57,7 +57,7 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
             data_tools.FsTransferSource(exp.data_source.source_directory),
             data_tools.FsTransferSource(destination_dir),
             data_rules,
-            f"proxy_{exp.secondary_id}_{exp.dt_created}"
+            f"proxy_{exp.secondary_id}_{common.pathify_date(exp.dt_created)}"
         )
 
         transferer.transfer()

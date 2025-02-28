@@ -24,7 +24,6 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         cconf = self.module_config["working_dir"]
         lmod = LmodEnvProvider(cconf['lmod_path'])
 
-        print("Processing cemproc! ")
 
         # For now (dirty way) our engine supports only tomo WF
         if not "TOMO" in exp_engine.exp.processing.workflow["Tags"]:
@@ -35,6 +34,8 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         metadata = {}
 
         tomo_session = TomoSession(source_dir=working_dir, working_dir=working_dir, lmod_env_provider=lmod, **metadata)
+        print("Processing cemproc! ")
+        return
 
 
         def invalid_state():
@@ -59,5 +60,5 @@ class CemprocProcessingHandler(ExperimentModuleBase):
            )
 
         meta = exp_engine.read_metadata()
-        wf.
+        # wf.
         pass

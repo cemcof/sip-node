@@ -37,6 +37,10 @@ def parse_date(date_str: str):
 def stringify_date(dt: datetime.datetime):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
+def pathify_date(dt: datetime.datetime):
+    """Formats a datetime object into a filename-safe string."""
+    return dt.strftime("%Y%m%d_%H%M%S")
+
 def elapsed_since(interval: datetime.timedelta, *sinces : datetime.datetime, dt_from=None):
     """ Return True if the interval has passed since first given date that is not None. Raises if all given dates are None"""
     if not dt_from:
