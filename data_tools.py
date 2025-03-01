@@ -25,6 +25,7 @@ class TransferAction(Enum):
     MOVE = "move"
 
 class TransferCondition(Enum):
+    ONCE = "once"
     IF_MISSING = "if_missing"
     IF_NEWER = "if_newer"
     ALWAYS = "always"
@@ -136,7 +137,15 @@ class DataRulesWrapper:
 
     def with_tags(self, *tags) -> 'DataRulesWrapper':
         # Filter current data rules by tag and return new dataruleswrapper object
-        return DataRulesWrapper(list(filter(lambda x: set(tags).issubset(x.tags), self.data_rules)))
+        # Make each given "tag" to be a set
+        tag_sets = (item if isinstance(item, set) else {item} for item in tags)
+        out_rules = []
+        for dr in self.data_rules:
+            # Any of tag_sets is subset of dr.tags?
+            if any(tg.issubset(dr.tags) for tg in tag_sets):
+                out_rules.append(dr)
+
+        return DataRulesWrapper(out_rules)
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
         files = set(files)

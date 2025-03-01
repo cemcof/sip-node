@@ -51,7 +51,7 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
         # Add rules for source patterns
-        data_rules = exp.data_source.get_combined_raw_datarules(data_rules)
+        data_rules = exp.data_source.get_combined_raw_datarules(data_rules, exp.data_source.keep_source_files)
 
         transferer = data_tools.DataAsyncTransferer(
             data_tools.FsTransferSource(exp.data_source.source_directory),
