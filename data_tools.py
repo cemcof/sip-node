@@ -4,7 +4,7 @@ import concurrent
 import hashlib
 import random
 import tempfile
-import threading
+import threading, traceback
 from datetime import datetime
 from enum import Enum
 import logging
@@ -138,11 +138,14 @@ class DataRulesWrapper:
     def with_tags(self, *tags) -> 'DataRulesWrapper':
         # Filter current data rules by tag and return new dataruleswrapper object
         # Make each given "tag" to be a set
-        tag_sets = (item if isinstance(item, set) else {item} for item in tags)
+        tag_sets = [item if isinstance(item, set) else {item} for item in tags]
         out_rules = []
+        print(tag_sets, type(tags))
         for dr in self.data_rules:
             # Any of tag_sets is subset of dr.tags?
-            if any(tg.issubset(dr.tags) for tg in tag_sets):
+            dr_ready = any(tg.issubset(dr.tags) for tg in tag_sets)
+            print(dr_ready, dr)
+            if dr_ready:
                 out_rules.append(dr)
 
         return DataRulesWrapper(out_rules)
@@ -353,6 +356,11 @@ class DataAsyncTransferer:
     def should_exclude(self, path: pathlib.Path):
         return path.name.startswith("_")
 
+    def _submit(self, fn, *args, **kwargs):
+        future = self.executor.submit(fn, *args, **kwargs)
+        print(type(future), future)
+        return asyncio.ensure_future(future, loop=self.ev_loop)
+
     def _transfer_strategy_download(self, file: pathlib.Path, data_rule: DataRule):
         target = self.target.resolve_target_location()
         absolute_target = target / data_rule.translate_to_target(file)
@@ -410,7 +418,7 @@ class DataAsyncTransferer:
             initial_size, initial_modify = stat
 
         # Now, file is likely ready, commence transfer
-        transfer_time = await self.executor.submit(strategy, file, data_rule, priority=order)
+        transfer_time = await self._submit(strategy, file, data_rule, priority=order)
 
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_size, initial_modify):
@@ -420,8 +428,8 @@ class DataAsyncTransferer:
         if data_rule.checksum:
             # Find checksum type that both target and source support
             sumtype = next(iter(self.source.supported_checksums().intersection(self.target.supported_checksums())), None)
-            srcsum = await self.executor.submit(self.source.checksum, file, sumtype, priority=order)
-            trgsum = await self.executor.submit(self.target.checksum, data_rule.translate_to_target(file), sumtype, priority=order)
+            srcsum = await self._submit(self.source.checksum, file, sumtype, priority=order)
+            trgsum = await self._submit(self.target.checksum, data_rule.translate_to_target(file), sumtype, priority=order)
             if srcsum != trgsum:
                 raise ChecksumMismatchError()
 
@@ -431,7 +439,7 @@ class DataAsyncTransferer:
         # Delete action, currently, if we fail to del, just continue normally and leave it
         if data_rule.action == TransferAction.MOVE:
             try:
-                await self.executor.submit(self.source.del_file, file, priority=order)
+                await self._submit(self.source.del_file, file, priority=order)
             except Exception as e:
                 self.logger.warning(f"Failed to delete file {file}, ignoring it: {e}")
 
@@ -493,6 +501,7 @@ class DataAsyncTransferer:
 
             except Exception as e:
                 self.logger.error("File transfer failed: " + str(e))
+                traceback.print_exc()
                 errors.append((f, e))
 
         return successes, errors
