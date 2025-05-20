@@ -1,5 +1,6 @@
 
 import logging
+import math
 import re
 import time
 import pathlib
@@ -71,6 +72,8 @@ def parse_timedelta(timedelta: str) -> datetime.timedelta:
     else:
         raise ValueError("Invalid timedelta format")
 
+def euclidean_distance(p1, p2):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
 
 # This is supposted to be run on thread
 def action_thread(func, sleeptimesec, cancel_event: threading.Event, reraise_exception=False):
@@ -264,15 +267,19 @@ def lmod_getenv(lmod_path, module_name):
     env_dict = {m[1]: m[4] for m in matches}
     return env_dict
 
-class LmodEnvProvider():
-    def __init__(self, lmod_path) -> None:
+class LmodEnvProvider:
+    def __init__(self, lmod_path, *modules) -> None:
         self.lmod_path = lmod_path
+        self.modules = modules
 
     def __call__(self, *args, **kwargs):
-        return self._lmod_getenv(*args, **kwargs)
+        if args:
+            return self._lmod_getenv(*args)
+        else:
+            return self._lmod_getenv(*self.modules)
 
-    def _lmod_getenv(self, module_name):
-        res = subprocess.run([self.lmod_path, "python", "load", module_name], capture_output=True, text=True, check=True)
+    def _lmod_getenv(self, *module_names):
+        res = subprocess.run([self.lmod_path, "python", "load", *module_names], capture_output=True, text=True, check=True)
         pattern = r'os\.environ\[("|\')(.*?)("|\')\] = ("|\')(.*?)("|\')'
         matches = re.findall(pattern, res.stdout)
         env_dict = {m[1]: m[4] for m in matches}
@@ -442,17 +449,27 @@ class PriorityThreadPoolExecutor(ThreadPoolExecutor):
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def shutdown(self, wait=True):
+    def shutdown(self, wait=True, cancel_futures=False):
         """
 
         Pool shutdown
-
+souso
         :param wait: if True wait for all threads to complete
         :type wait: bool
 
         """
         with self._shutdown_lock:
             self._shutdown = True
+            if cancel_futures:
+                # Drain all work items from the queue, and then cancel their
+                # associated futures.
+                while True:
+                    try:
+                        work_item = self._work_queue.get_nowait()[1]
+                    except queue.Empty:
+                        break
+                    if work_item is not None:
+                        work_item.future.cancel()
             self._work_queue.put(NULL_ENTRY)
         if wait:
             for t in self._threads:

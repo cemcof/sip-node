@@ -4,13 +4,12 @@ import tempfile
 import hashlib
 import time, os, glob
 import configuration
-import experiment
-from experiment import ExperimentWrapper
-import data_tools, common
+from experiment import ExperimentWrapper, ExperimentStorageEngine
+from data_tools import FsTransferSource
 import pathlib
 import shutil
 
-class FsExperimentStorageEngine(experiment.ExperimentStorageEngine, data_tools.FsTransferSource):
+class FsExperimentStorageEngine(FsTransferSource, ExperimentStorageEngine):
     def __init__(self, experiment: ExperimentWrapper, logger: logging.Logger, data_rules: configuration.DataRulesWrapper, metadata_model: dict,
                  base_path, 
                  server_base_path,
@@ -18,8 +17,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine, data_tools.F
                 
                  metadata_target="experiment.yml",
                  operator_links_folder=None) -> None:
-        super().__init__(experiment, logger, data_rules, metadata_model, metadata_target)
-        self.base_path = pathlib.Path(base_path)
+        FsTransferSource.__init__(self, pathlib.Path(base_path))
+        ExperimentStorageEngine.__init__(self, experiment, logger, data_rules, metadata_model, metadata_target)
         self.server_base_path = pathlib.Path(server_base_path)
         self.server = server
         self.operator_links_folder = pathlib.Path(operator_links_folder) if operator_links_folder else None
@@ -56,13 +55,12 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine, data_tools.F
 
     def is_accessible(self):
         try:
-            target_location = self.resolve_target_location()
-            return target_location.exists()
+            return self.root.exists()
         except Exception as e:
             return False
 
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
-        target_path = self.base_path / self.exp.storage.subpath
+        target_path = self.root / self.exp.storage.subpath
         return target_path / (src_relative or "")
     
     def file_exists(self, path_relative: pathlib.Path):
@@ -80,7 +78,8 @@ class FsExperimentStorageEngine(experiment.ExperimentStorageEngine, data_tools.F
 
     def purge(self):
         target = self.resolve_target_location()
-        shutil.rmtree(target)
+        if target.exists():
+            shutil.rmtree(target)
 
 
 def fs_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):

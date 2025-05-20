@@ -10,8 +10,6 @@ class DataArchivationService(experiment.ExperimentModuleBase):
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         # We have experiment current storage engine
         # Our task is to move data to another storage engine, if desired (configured)
-
-        # DELETING DATA??? 
         exp_target_storage_engine = self.module_config["archivation_storage"]
         if exp_engine.exp.storage.engine == exp_target_storage_engine:
             print("Same storage, already archvied")

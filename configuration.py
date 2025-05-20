@@ -121,7 +121,8 @@ class LimsConfigWrapper():
         return next(filter(lambda x: x["target"] == module_name, self.get_node_config(node_name)["Modules"]), None)
     
     def get_experiment_config(self, instrument, technique):
-        return JobConfigWrapper(self._config["Experiments"][instrument][technique])
+        cf = next(filter(lambda e: (e["Instrument"] == instrument and e["Technique"] == technique), self._config["Experiments"]))
+        return JobConfigWrapper(cf)
 
     
     def find_module_config_any_node(self, module_name):

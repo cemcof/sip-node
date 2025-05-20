@@ -122,7 +122,7 @@ class EmMoviesHandler:
 
         # Get movie file path
         # movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
-        movie_rule = self.storage_engine.data_rules.get_target_for("movie", "raw", subfiles=True)
+        movie_rule = self.storage_engine.data_rules.get_target_for({"movie", "raw"}, subfiles=True)
         movie_rule = DataRulesWrapper(movie_rule)
         movie_glob = self.storage_engine.glob(movie_rule)
         first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
@@ -138,7 +138,7 @@ class EmMoviesHandler:
         self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         
         # Now gain file
-        gain_rule = self.storage_engine.data_rules.get_target_for("gain", "raw", subfiles=False)
+        gain_rule = self.storage_engine.data_rules.get_target_for({"gain", "raw"}, subfiles=False)
         gain_rule = DataRulesWrapper(gain_rule)
         if gain_rule.data_rules:
             gain_ref = next(self.storage_engine.glob(gain_rule), None)
@@ -158,7 +158,7 @@ class EmMoviesHandler:
                 
         for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
             # 1) Path to the source files
-            path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0].target
+            path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags({"movie", "raw"}).data_rules[0].target
             prot["filesPath"] = str(processing_source_path / path_to_movies_relative) 
             # 2) Pattern of the source files and movie suffix
             movie_path = movies_info[0]

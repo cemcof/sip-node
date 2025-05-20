@@ -140,11 +140,9 @@ class DataRulesWrapper:
         # Make each given "tag" to be a set
         tag_sets = [item if isinstance(item, set) else {item} for item in tags]
         out_rules = []
-        print(tag_sets, type(tags))
         for dr in self.data_rules:
             # Any of tag_sets is subset of dr.tags?
             dr_ready = any(tg.issubset(dr.tags) for tg in tag_sets)
-            print(dr_ready, dr)
             if dr_ready:
                 out_rules.append(dr)
 
@@ -318,6 +316,17 @@ class FsTransferSource(DataTransferSource):
     def resolve_target_location(self, src_relative: pathlib.Path = None) -> pathlib.Path:
         return self.root / (src_relative or "")
 
+class TransferResult:
+    def __init__(self, file: pathlib.Path, dr: DataRule, total_time: float, transfer_time: float, size: float, modif: float,
+                 checksum):
+        self.file = file
+        self.dr = dr
+        self.total_time = total_time
+        self.transfer_time = transfer_time
+        self.size = size
+        self.modif = modif
+        self.checksum = checksum
+
 class TargetNotSameSizeOrModifyError(Exception):
     pass
 
@@ -343,8 +352,9 @@ class DataAsyncTransferer:
         self.on_start = on_start or (lambda: None)
         self.on_finish = on_finish or (lambda: None)
         self.on_file_done = on_file_done or (lambda: None)
+        self.max_consecutive_errors = 10
 
-        self.executor = common.PriorityThreadPoolExecutor(max_workers=1)
+        self.executor = None
         self.ev_loop = None
 
     def _load_metafile(self):
@@ -391,6 +401,7 @@ class DataAsyncTransferer:
             return
         # Here we perform standard fs copy
         start = time.time()
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(source, target)
         return time.time() - start
 
@@ -418,7 +429,7 @@ class DataAsyncTransferer:
 
         # Now, file is likely ready, commence transfer
         stime = time.time()
-        print(f"[{order}] Submitting {file}")
+        # print(f"[{order}] Submitting {file}")
         transfer_time = await self._submit(strategy, file, data_rule, priority=order)
         took_time = time.time() - stime
         print(f"[{order}] Finished transfer, time: {transfer_time:.3f}, took: {took_time:.3f}")
@@ -433,6 +444,7 @@ class DataAsyncTransferer:
             sumtype = next(iter(self.source.supported_checksums().intersection(self.target.supported_checksums())), None)
             srcsum = await self._submit(self.source.checksum, file, sumtype, priority=order)
             trgsum = await self._submit(self.target.checksum, data_rule.translate_to_target(file), sumtype, priority=order)
+            # print(f"[{order}] Computed checksums: {srcsum} {trgsum}")
             if srcsum != trgsum:
                 raise ChecksumMismatchError()
 
@@ -447,7 +459,8 @@ class DataAsyncTransferer:
                 self.logger.warning(f"Failed to delete file {file}, ignoring it: {e}")
 
         # Yeah! Transfer done, no exception, return times it took and size
-        return file, data_rule, time.time() - initial_time, transfer_time, initial_size, initial_modify
+        return TransferResult(file, data_rule, time.time() - initial_time, transfer_time, initial_size, initial_modify,
+                              checksum=data_rule.checksum)
 
     async def transfer_all(self):
         consumation_start = time.time()
@@ -474,47 +487,70 @@ class DataAsyncTransferer:
                 continue
 
             # Transfer this unit (schedule)
-            print("Would Transfer: ", f, " ", dr.tags, " ", modif, " ", size, " ", transfer_strategy, " ", len(tasks), "")
+            # print("Would Transfer: ", f, " ", dr.tags, " ", modif, " ", size, " ", transfer_strategy, " ", len(tasks), "")
             tsk = self.ev_loop.create_task(self.transfer_unit(f, transfer_strategy,  dr, len(tasks)))
             tasks.append(tsk)
             total_size_to_transfer += size
 
         # Log what we scanned and queued
-        scanned_patterns = ""
-        for tg, pts in self.data_rules.get_tags_patterns():
-            scanned_patterns += f" {tg}: {'; '.join(pts)}"
+        rules_str = ""
+        for rule in self.data_rules:
+            rules_str += f"[{', '.join(rule.tags)}] - [{', '.join(rule.patterns)}] \n"
 
         self.logger.info(f"Scanned and queued {len(tasks)} files of total size {common.sizeof_fmt(total_size_to_transfer)} for transfer. "
-                         f"Scanned patterns: {scanned_patterns}")
+                         f"Rules: \n {rules_str}")
 
         # Now, wait for the transfer tasks and react to their result
-        # TODO - on encountering too many errors, finish - somewhere something is probably broken...
+        consecutive_errors = 0
         for tsk in asyncio.as_completed(tasks):
-            f = None
             try:
                 result = await tsk
-                f, dr, took, took_transfer, size, modif = result
                 # Success - mark this file as done
-                meta[str(f)] = modif
-                successes.append((f, modif)) # TODO what?
+                meta[str(result.file)] = result.modif
+                successes.append((result.file, result.modif)) # TODO what?
                 if metafile_append:
-                    metafile_append.write(f"{str(f)}: {modif}\n")
+                    metafile_append.write(f"{str(result.file)}: {result.modif}\n")
                     metafile_append.flush()
-                self.logger.info(f"TRANSFER [{', '.join(dr.tags)}]; {common.sizeof_fmt(size)}, {took_transfer:.3f} sec transfer, {took:.3f}sec total \n {f.name}")
-
+                message = f"TRANSFER [{', '.join(result.dr.tags)}]; {common.sizeof_fmt(result.size)}, {result.transfer_time:.3f} sec transfer, \n {result.file.name}"
+                if result.checksum:
+                    message += f", checksum validated"
+                self.logger.info(message)
+                consecutive_errors = 0
             except Exception as e:
                 self.logger.error("File transfer failed: " + str(e))
                 traceback.print_exc()
-                errors.append((f, e))
+                errors.append(e)
+                consecutive_errors += 1
+
+            if consecutive_errors > self.max_consecutive_errors:
+                self.logger.error("Too many consecutive errors, storage failure is likely... prematurely terminating, not finishing all scanned files")
+                # for tsk in tasks:
+                #     tsk.cancel()
+                break
 
         return successes, errors
 
+    def stop(self):
+        tsks = asyncio.all_tasks(self.ev_loop)
+        for tsk in tsks:
+            tsk.cancel()
+        self.ev_loop.run_until_complete(asyncio.gather(*tsks, return_exceptions=True))
+        self.ev_loop.close()
+        self.ev_loop = None
 
-    def transfer(self, until=None):
+        self.executor.shutdown(cancel_futures=True)
+        self.executor = None
+
+    def transfer(self, until: threading.Event=None):
         self.ev_loop = asyncio.new_event_loop()
+        self.executor = common.PriorityThreadPoolExecutor(max_workers=1)
         asyncio.set_event_loop(self.ev_loop)
+        # Bad transfer config (no files selected) - new one has been launched
+        try:
+            result = self.ev_loop.run_until_complete(self.transfer_all())
+        finally:
+            self.stop()
 
-        result = self.ev_loop.run_until_complete(self.transfer_all())
         return result
 
 

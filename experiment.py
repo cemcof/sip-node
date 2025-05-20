@@ -16,7 +16,7 @@ import enum
 import uuid
 import threading
 import inspect, tempfile
-from typing import List, Union
+from typing import List, Union, Tuple
 from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, \
     list_directory, DataAsyncTransferer
 
@@ -47,9 +47,6 @@ class StorageState(enum.Enum):
     ARCHIVATION_REQUESTED = "ArchivationRequested"
     ARCHIVING = "Archiving"
     ARCHIVED = "Archived"
-    EXPIRATION_REQUESTED = "ExpirationRequested"
-    EXPIRING = "Expiring"
-    EXPIRED = "Expired"
 
 class PublicationState(enum.Enum):
     UNPUBLISHED = "Unpublished"
@@ -59,10 +56,31 @@ class PublicationState(enum.Enum):
     PUBLICATION_REQUESTED = "PublicationRequested"
     PUBLISHED = "Published"
 
+class OperationState(enum.Enum):
+    NOT_APPLICABLE = "NotApplicableOperation"
+    NOT_SCHEDULED = "NotScheduledOperation"
+    SCHEDULED = "ScheduledOperation"
+    REQUESTED = "RequestedOperation"
+    RUNNING = "RunningOperation"
+    FINISHED = "FinishedOperation"
+
+class Operations(enum.Enum):
+    EXPIRATION = "ExpirationOperation"
+    ARCHIVATION = "ArchivationOperation"
+    PUBLICATION = "PublicationOperation"
+
+
 class ExperimentApi:
     def __init__(self, exp_id, http_session: requests.Session):
         self.exp_id = exp_id
         self._http_session = http_session
+
+    @property
+    def session(self):
+        return self._http_session
+
+    def exp_url_base(self):
+        return f"experiments/{self.exp_id}"
         
     def get_experiment(self):
         result = self._http_session.get(f"experiments/{self.exp_id}")
@@ -97,6 +115,29 @@ class ExperimentApi:
 
 
 
+class OperationWrapper:
+    def __init__(self, op_name: str, data, api: ExperimentApi = None):
+        self.data = data
+        self.name = op_name
+        self.api = api
+
+    def is_in(self, state: OperationState):
+        return self.data["$type"] == state.value
+
+    def run_operation(self, node_name: str):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/run", params={"node": node_name})
+        result.raise_for_status()
+        self.data = result.json()
+
+    def finish_operation(self, node_name: str):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/finish", params={"node": node_name})
+        result.raise_for_status()
+        self.data = result.json()
+
+    def fail_operation(self, node_name: str, request_again: bool = True):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/fail", params={"node": node_name, "request_again": request_again})
+        result.raise_for_status()
+        self.data = result.json()
 
 class ExperimentProcessingWrapper(common.StateObj):
     def __init__(self, processing_data, exp_api: ExperimentApi):
@@ -238,10 +279,11 @@ class ExperimentStorageWrapper:
         self.exp_api.patch_experiment({"Storage": {"DtLastUpdate": strd}})
         self._exp_data["DtLastUpdate"] = strd
 
+
     @property
-    def archive(self):
-        return self._exp_data["Archive"]
-    
+    def expiration_operation(self):
+        return OperationWrapper("ExpirationOperation", self._exp_data["ExpirationOperation"], self.exp_api)
+
     @property
     def target(self):
         return self._exp_data["Target"]
@@ -298,6 +340,10 @@ class ExperimentPublicationWrapper:
             self.exp_api.patch_experiment_publication({"Publication": {"State": str(value)}})
             self.reload()
 
+    @property
+    def operation(self):
+        return OperationWrapper(self._publication["PublicationOperation"])
+
 
 class ExperimentWrapper:
     def __init__(self, experiment_api: ExperimentApi, data=None):
@@ -325,9 +371,6 @@ class ExperimentWrapper:
         if (self.state != value):
             self.exp_api.change_state(value)
             self.reload()
-
-    def to_state_from(self, from_state, to_state):
-        self.exp_api.change_state
 
 
     @property
@@ -407,11 +450,17 @@ class ExperimentsApi:
     def get_active_experiments(self):
         return self.get_experiments_by_states(exp_state=JobState.ACTIVE)
         
-    def get_experiments(self, queryData={},  subpath=None):
+    def get_experiments(self, queryData=None, subpath=None):
+        queryData = queryData or {}
         path = "experiments" if subpath is None else f"experiments/{subpath}"
         result = self._http_session.get(path, params=queryData)
         expData = result.json()
         return [ExperimentWrapper(self.for_experiment(x["Id"]), x) for x in expData]
+
+    def get_experiments_by_operation_states(self, operations: List[Tuple[Operations, OperationState]]):
+        qrData = [(x.value, y.value) for x, y in operations]
+        exps = self.get_experiments(queryData=qrData, subpath="by_operation")
+        return exps
 
     def get_experiments_by_states(self, exp_state: Union[JobState, List[JobState], None]=None,
                                         storage_state: Union[StorageState, List[StorageState], None]=None,

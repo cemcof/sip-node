@@ -10,16 +10,6 @@ import common
 import threading
 import experiment
 
-# Main task of main is to obtain configuration for this node
-
-# // DONE Prepsat storage engine parametry 
-# // DONE Pouzit v irods engine fs engine a doimplementovat
-# // DONE Poresit target location resolving, vcetne stredni cesty (data 24)
-# // Prosit metadata hadling
-# // In-out data v processingu
-# // U scipionu udelat queue i nonqueue variantu na ciisb pouzit queue variantu
-# // Ukoncovani processingui  
-
 aparser = argparse.ArgumentParser(
     prog = 'lims-node',
     description = 'LIMS processing/controlling node',

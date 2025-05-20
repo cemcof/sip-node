@@ -1,6 +1,7 @@
 import datetime
 import experiment, re
-from experiment import ExperimentStorageEngine
+from experiment import ExperimentStorageEngine, OperationState
+
 
 class JobLifecycleService(experiment.ExperimentModuleBase):
 
@@ -39,9 +40,6 @@ class JobLifecycleService(experiment.ExperimentModuleBase):
                 "State": experiment.JobState.ACTIVE.value
             }
 
-            # If we have archiving and publication, request also draft creation
-            if exp_engine.exp.publication.engine and exp_engine.exp.storage.archive:
-                patch["Publication"] = {"State": experiment.PublicationState.DRAFT_CREATION_REQUESTED.value}
 
             # Set processing node, if necessary 
             proc = exp_engine.exp.processing
