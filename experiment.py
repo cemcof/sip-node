@@ -90,7 +90,7 @@ class ExperimentApi:
         self._http_session.post(f"documents/{document_id}/files", files=files_for_request, params={"append": append})
 
     def send_email(self, email):
-        result = self._http_session.post(f"experiments/{self.exp_id}/email", json=email)
+        result = self._http_session.post(f"experiments/{self.exp_id}/email", json=email, timeout=130)
 
 
 
