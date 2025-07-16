@@ -3,3 +3,9 @@ pathlib
 psutil
 requests
 python-irodsclient
+tiffile
+mrcfile
+jsonpatch
+bson
+matplotlib
+reportlab

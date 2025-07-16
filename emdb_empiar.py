@@ -2,10 +2,56 @@ import experiment
 from experiment import Operations
 import jsonschema, json
 
-def build_empiar_deposition_data():
-    empiar_deposition = {
+def experiment_type_selector(instrument, technique):
+    # 3 - default
+    # 4, 5 hydra?
+    # 9 - diffraction tecnique
+    pass
 
+def build_empiar_deposition_data(metadata: MetadataProvider):
+    user_simple = {
+        "name": "(())",
+        "order_id": 0,
+        "author_orcid":  metadata.get_optional("PI_orcid"),
     }
+
+    user_complex = {
+        "author_orcid": user_simple["author_orcid"],
+        "first_name": metadata.get("PI_first_name"),
+        "last_name": metadata.get("PI_last_name"),
+        "email": metadata.get("PI_email"),
+        "organization": metadata.get("PI_affiliation"),
+        "country": None # TODO
+    }
+
+    imagesets = {}
+
+    empiar_deposition = {
+        "title": metadata.get("SAMPLE_project_name") or
+                 f'{metadata.get("SAMPLE_project_name")} - {metadata.get("SAMPLE_name")} - {metadata.get("DATA_experiment_type")}',
+        "release_date": "HP", # or HO
+        "experiment_type": experiment_type_selector(metadata.get("DATA_emMicroscopeId"), metadata.get("DATA_experiment_type")),
+        "cross_references": [{"name": "TODO "}],
+        "biostudies_references": [] if not metadata.get("SAMPLE_reference") else [{"name": metadata.get("SAMPLE_reference")}],
+        "authors": [user_simple],
+        "corresponding_author": user_complex,
+        "principal_investigator": [user_complex],
+        "imagesets": imagesets,
+        "citation": [{
+            "authors": [user_simple],
+            "published": False,
+            "j_or_nj_citation": True,
+            "title": metadata.get("TODO")
+        }]
+    }
+
+    # TODO - experiment type selector
+    # TODO - user simple
+    # TODO - country
+    # TODO - imagesets
+    # TODO - workflowhub reference
+    # TODO - workflow file v pripade scipionu
+    # TODO - user middle name
 
     jsonschema.validate(instance=empiar_deposition, schema=json.loads(empiar_schema))
     return empiar_deposition
@@ -21,9 +67,10 @@ class EmdbEmpiarPublicationService(experiment.ExperimentModuleBase):
         exps = (experiment.ExperimentsApi(self._api_session)
                 .get_experiments_by_operation_states(valid_states))
 
-        return filter(lambda e: e.publications, exps)
+        return filter(lambda e: e.publications.publication("empiar-emdb"), exps)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
+        exp_engine.data_rules.
 
         print(f"We have experiment! {exp_engine.exp.secondary_id}")
         pass

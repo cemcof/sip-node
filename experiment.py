@@ -131,8 +131,8 @@ class OperationWrapper:
         result.raise_for_status()
         self.data = result.json()
 
-    def finish_operation(self, node_name: str):
-        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/finish", params={"node": node_name})
+    def finish_operation(self, node_name: str, data=None):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/finish", params={"node": node_name}, json=data)
         result.raise_for_status()
         self.data = result.json()
 
@@ -344,7 +344,7 @@ class ExperimentPublicationWrapper:
 
     @property
     def operation(self):
-        return OperationWrapper(self._publication["PublicationOperation"])
+        return OperationWrapper("PublicationOperation", self._publication["PublicationOperation"], self.exp_api)
 
 class ExperimentPublicationsWrapper:
     def __init__(self, pubs_data: list, exp_api: ExperimentApi) -> None:
