@@ -543,7 +543,7 @@ class DataAsyncTransferer:
 
     def transfer(self, until: threading.Event=None):
         self.ev_loop = asyncio.new_event_loop()
-        self.executor = common.PriorityThreadPoolExecutor(max_workers=1)
+        self.executor = common.PriorityThreadPoolExecutor(max_workers=1, thread_name_prefix=f"transfer_{self.identifier}")
         asyncio.set_event_loop(self.ev_loop)
         # Bad transfer config (no files selected) - new one has been launched
         try:

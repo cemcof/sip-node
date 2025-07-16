@@ -379,7 +379,7 @@ class PriorityThreadPoolExecutor(ThreadPoolExecutor):
     Thread pool executor with priority queue (priorities must be different, lowest first)
 
     """
-    def __init__(self, max_workers=None):
+    def __init__(self, max_workers=None, thread_name_prefix=''):
         """
 
         Initializes a new PriorityThreadPoolExecutor instance
@@ -388,7 +388,7 @@ class PriorityThreadPoolExecutor(ThreadPoolExecutor):
         :type max_workers: int
 
         """
-        super(PriorityThreadPoolExecutor, self).__init__(max_workers)
+        super(PriorityThreadPoolExecutor, self).__init__(max_workers, thread_name_prefix=thread_name_prefix)
 
         # change work queue type to queue.PriorityQueue
 

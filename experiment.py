@@ -1,7 +1,9 @@
+import concurrent
 import fnmatch
 import logging
 import pathlib
 import re
+import weakref
 
 import yaml
 import common, configuration
@@ -19,7 +21,7 @@ import inspect, tempfile
 from typing import List, Union, Tuple
 from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, \
     list_directory, DataAsyncTransferer
-
+from concurrent.futures import ThreadPoolExecutor
 
 class JobState(enum.Enum):
     IDLE = "Idle"
@@ -344,6 +346,14 @@ class ExperimentPublicationWrapper:
     def operation(self):
         return OperationWrapper(self._publication["PublicationOperation"])
 
+class ExperimentPublicationsWrapper:
+    def __init__(self, pubs_data: list, exp_api: ExperimentApi) -> None:
+        self.pubs_data = pubs_data
+        self.exp_api = exp_api
+
+    def publication(self, type: str):
+        exps = map(lambda x: ExperimentPublicationWrapper(x, self.exp_api), self.pubs_data)
+        return next(filter(lambda p: p.engine == type, exps))
 
 class ExperimentWrapper:
     def __init__(self, experiment_api: ExperimentApi, data=None):
@@ -384,10 +394,10 @@ class ExperimentWrapper:
     @property    
     def processing(self):
         return ExperimentProcessingWrapper(self._data["Processing"], self.exp_api)
-    
+
     @property
-    def publication(self):
-        return ExperimentPublicationWrapper(self._data["Publication"], self.exp_api)
+    def publications(self):
+        return ExperimentPublicationsWrapper(self._data["Publications"], self.exp_api)
 
     @property
     def secondary_id(self):
@@ -702,6 +712,9 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
         super().__init__(name, logger, lims_logger, config, api_session)
         self.exp_storage_engine_factory = exp_storage_engine_factory
         self.exec_state = {}
+        self.state_lock = threading.Lock()
+        self.executor = None if not self.is_parallel else ThreadPoolExecutor(max_workers=self.parallel, thread_name_prefix=name)
+        self._finalizer = None if not self.is_parallel else weakref.finalize(self, self.executor.shutdown, wait=False)
 
     def _get_experiment_storage_engine(self, e: ExperimentWrapper):
         exp_logger = logger_db_api.experiment_logger_adapter(self._lims_logger, e.id)
@@ -716,35 +729,24 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
 
     @property
     def is_parallel(self):
-        return self.parallel > 0 or self.parallel == -1
-    
-    def _clean_finished_threads(self):
-        for exp_id, thrd in list(self.exec_state.items()):
-            if not thrd.is_alive():
-                self.logger.debug(f"Finished thread for experiment {exp_id}")
-                del self.exec_state[exp_id]
+        return self.parallel > 0
     
     def step(self):
-        self._clean_finished_threads()
-        
         experiments = self.provide_experiments()
 
-        def step_exp_helper(exp_engine):
+        def step_exp_helper(e_engine):
             try:
-                self.step_experiment(exp_engine)
+                self.step_experiment(e_engine)
             except Exception as e:
                 self.logger.exception(e)
+            finally:
+                with self.state_lock:
+                    self.exec_state.pop(e_engine.exp.id, None)
 
-        def wrap_step_parallel(exp_engine):
-            if len(self.exec_state) >= self.parallel != -1:
-                return
-
-            if exp_engine.exp.id in self.exec_state:
-                return
-
-            thread = threading.Thread(target=step_exp_helper, args=(exp_engine,))
-            thread.start()
-            self.exec_state[exp_engine.exp.id] = thread
+        def wrap_step_parallel(e_engine):
+            with self.state_lock:
+                if e_engine.exp.id not in self.exec_state:
+                    self.exec_state[e_engine.exp.id] = self.executor.submit(step_exp_helper, e_engine)
 
         for e in experiments:
             try:
