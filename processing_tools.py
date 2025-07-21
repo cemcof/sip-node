@@ -2,6 +2,8 @@ import logging
 import pathlib
 import experiment
 import typing
+
+from cemproc.tomoGPUA import moveFromScope
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
@@ -112,6 +114,14 @@ class EmMoviesHandler:
         return gain_ref_target
 
 
+    def _movie_glob(self, with_meta=True):
+        movie_rule = self.storage_engine.data_rules.get_target_for({"movie", "raw"}, subfiles=with_meta)
+        movie_rule = DataRulesWrapper(movie_rule)
+        return self.storage_engine.glob(movie_rule)
+
+    def count_movies(self):
+        movie_glob = self._movie_glob(with_meta=False)
+        return len(movie_glob)
 
     def find_movie_information(self):
         """ There are several supported data and metadata file types for movies/micrographs
@@ -122,9 +132,8 @@ class EmMoviesHandler:
 
         # Get movie file path
         # movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
-        movie_rule = self.storage_engine.data_rules.get_target_for({"movie", "raw"}, subfiles=True)
-        movie_rule = DataRulesWrapper(movie_rule)
-        movie_glob = self.storage_engine.glob(movie_rule)
+
+        movie_glob = self._movie_glob()
         first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
         if not first_movie:
             return None

@@ -58,7 +58,7 @@ if not arguments.sip_api_url:
 
 # ========= Factories, edit them to provide required dependencies ===========
 def lims_api_session_provider():
-        return configuration.create_lims_session(arguments.sip_api_url, arguments.sip_api_key, arguments.sip_api_https_proxy)
+        return configuration.create_lims_session(arguments.sip_api_url, arguments.sip_api_key, arguments.sip_api_https_proxy, verify=not arguments.debug_mode)
 
 def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     engine = engine or exp.storage.engine

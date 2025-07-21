@@ -251,8 +251,8 @@ class ConfigFromDbSyncer(LimsNodeModule):
 
 
    
-def create_lims_session(base_url, api_key, https_proxy=None):
-    session = common.BaseUrlSession(base_url)
+def create_lims_session(base_url, api_key, https_proxy=None, verify=True):
+    session = common.BaseUrlSession(base_url, verify=verify)
     session.headers.update({"lims-organization": api_key})
 
     if https_proxy:

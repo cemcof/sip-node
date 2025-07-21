@@ -2,37 +2,55 @@ import experiment
 from experiment import Operations
 import jsonschema, json
 
+from processing_tools import EmMoviesHandler
+
+
 def experiment_type_selector(instrument, technique):
     # 3 - default
     # 4, 5 hydra?
     # 9 - diffraction tecnique
-    pass
+    if instrument.startswith('Hydra'):
+        return 4
+    return 3
 
-def build_empiar_deposition_data(metadata: MetadataProvider):
+def imageset_info():
+
+    return {
+        "category": None,
+        "header_format": None,
+        "data_format": None,
+        "num_images_or_tilt_series": None,
+        "frames_per_image": None,
+    }
+
+def build_empiar_deposition_data(metadata):
+
     user_simple = {
-        "name": "(())",
+        "name": f"('{metadata['PI_last_name']}', '{''.join(part[0].upper() for part in metadata['PI_first_name'].split())}')",  # "('Chang', 'YW')"
         "order_id": 0,
-        "author_orcid":  metadata.get_optional("PI_orcid"),
+        "author_orcid":  metadata.get("PI_orcid"),
     }
 
     user_complex = {
         "author_orcid": user_simple["author_orcid"],
-        "first_name": metadata.get("PI_first_name"),
-        "last_name": metadata.get("PI_last_name"),
-        "email": metadata.get("PI_email"),
-        "organization": metadata.get("PI_affiliation"),
-        "country": None # TODO
+        "first_name": metadata["PI_first_name"],
+        "last_name": metadata["PI_last_name"],
+        "email": metadata["PI_email"],
+        "organization": metadata["PI_affiliation"],
+        "country": None  # TODO
     }
 
     imagesets = {}
 
     empiar_deposition = {
-        "title": metadata.get("SAMPLE_project_name") or
-                 f'{metadata.get("SAMPLE_project_name")} - {metadata.get("SAMPLE_name")} - {metadata.get("DATA_experiment_type")}',
-        "release_date": "HP", # or HO
-        "experiment_type": experiment_type_selector(metadata.get("DATA_emMicroscopeId"), metadata.get("DATA_experiment_type")),
+        "title": metadata["SAMPLE_project_name"] or
+                 f'{metadata["SAMPLE_project_name"]} - {metadata["SAMPLE_name"]} - {metadata["DATA_experiment_type"]}',
+        "release_date": "HP",  # or HO
+        "experiment_type": experiment_type_selector(
+            metadata["DATA_emMicroscopeId"], metadata["DATA_experiment_type"]
+        ),
         "cross_references": [{"name": "TODO "}],
-        "biostudies_references": [] if not metadata.get("SAMPLE_reference") else [{"name": metadata.get("SAMPLE_reference")}],
+        "biostudies_references": [] if not metadata["SAMPLE_reference"] else [{"name": metadata["SAMPLE_reference"]}],
         "authors": [user_simple],
         "corresponding_author": user_complex,
         "principal_investigator": [user_complex],
@@ -41,12 +59,12 @@ def build_empiar_deposition_data(metadata: MetadataProvider):
             "authors": [user_simple],
             "published": False,
             "j_or_nj_citation": True,
-            "title": metadata.get("TODO")
+            "title": metadata["TODO"]
         }]
     }
 
-    # TODO - experiment type selector
-    # TODO - user simple
+    # TODO - experiment type selector - jeste probrat s Jirkou
+    # TODO - moznost archivace Transfer zrusit?
     # TODO - country
     # TODO - imagesets
     # TODO - workflowhub reference
@@ -70,9 +88,20 @@ class EmdbEmpiarPublicationService(experiment.ExperimentModuleBase):
         return filter(lambda e: e.publications.publication("empiar-emdb"), exps)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
-        exp_engine.data_rules.
+        # exp_engine.data_rules.
+        metadata = exp_engine.read_metadata()
+        em_handler = EmMoviesHandler(exp_engine)
+        mov, met,  gain = em_handler.find_movie_information()
 
-        print(f"We have experiment! {exp_engine.exp.secondary_id}")
+
+
+        try:
+            deposit = build_empiar_deposition_data(metadata)
+            print(f"We have experiment empiar deposit json! {exp_engine.exp.secondary_id} \n{deposit}")
+        except Exception as e:
+            print(e)
+            pass
+
         pass
 
 

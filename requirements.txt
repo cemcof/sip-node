@@ -9,3 +9,4 @@ jsonpatch
 bson
 matplotlib
 reportlab
+jsonschema

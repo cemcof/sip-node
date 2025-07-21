@@ -132,10 +132,11 @@ class DataWrapper:
 
 # Base url options is missing in requests library, thus this
 class BaseUrlSession(requests.Session):
-    def __init__(self, base_url, timeout=5) -> None:
+    def __init__(self, base_url, timeout=5, verify=True) -> None:
         super().__init__()
         self.base_url = base_url
         self.timeout = timeout
+        self.verify = verify
 
     def request(self, method, url, *args, **kwargs):
         joined_url = urllib.parse.urljoin(self.base_url, url)
