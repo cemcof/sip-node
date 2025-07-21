@@ -3,7 +3,7 @@ from experiment import Operations
 import jsonschema, json
 
 from processing_tools import EmMoviesHandler
-
+import empiar_depositor.empiar_depositor
 
 def experiment_type_selector(instrument, technique):
     # 3 - default
@@ -37,7 +37,7 @@ def build_empiar_deposition_data(metadata):
         "last_name": metadata["PI_last_name"],
         "email": metadata["PI_email"],
         "organization": metadata["PI_affiliation"],
-        "country": None  # TODO
+        "country": metadata["PI_affiliation_country"]
     }
 
     imagesets = {}
