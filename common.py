@@ -1,5 +1,6 @@
 
 import logging
+import math
 import re
 import time
 import pathlib
@@ -37,6 +38,21 @@ def parse_date(date_str: str):
 def stringify_date(dt: datetime.datetime):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
+def pathify_date(dt: datetime.datetime):
+    """Formats a datetime object into a filename-safe string."""
+    return dt.strftime("%Y%m%d_%H%M%S")
+
+
+def timestamp():
+    return f"{datetime.datetime.now():%y%m%d_%H%M%S}"
+
+def smaller2powerN(val):
+    for i in range(val - 1, 0, -1):
+        if ((i & (i - 1)) == 0):
+            res = i
+            break
+    return res
+
 def elapsed_since(interval: datetime.timedelta, *sinces : datetime.datetime, dt_from=None):
     """ Return True if the interval has passed since first given date that is not None. Raises if all given dates are None"""
     if not dt_from:
@@ -67,6 +83,8 @@ def parse_timedelta(timedelta: str) -> datetime.timedelta:
     else:
         raise ValueError("Invalid timedelta format")
 
+def euclidean_distance(p1, p2):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
 
 # This is supposted to be run on thread
 def action_thread(func, sleeptimesec, cancel_event: threading.Event, reraise_exception=False):
@@ -125,10 +143,11 @@ class DataWrapper:
 
 # Base url options is missing in requests library, thus this
 class BaseUrlSession(requests.Session):
-    def __init__(self, base_url, timeout=5) -> None:
+    def __init__(self, base_url, timeout=5, verify=True) -> None:
         super().__init__()
         self.base_url = base_url
         self.timeout = timeout
+        self.verify = verify
 
     def request(self, method, url, *args, **kwargs):
         joined_url = urllib.parse.urljoin(self.base_url, url)
@@ -260,6 +279,32 @@ def lmod_getenv(lmod_path, module_name):
     env_dict = {m[1]: m[4] for m in matches}
     return env_dict
 
+class IEnvironmentSetup:
+    """ Sets up environment for execution of external tools """
+    def __call__(self, *args, **kwargs) -> dict:
+        raise NotImplementedError()
+
+class LmodEnvProvider(IEnvironmentSetup):
+    def __init__(self, lmod_path, *modules) -> None:
+        self.lmod_path = lmod_path
+        self.modules = modules
+
+    def __call__(self, *args, **kwargs) -> dict:
+        if args:
+            return self._lmod_getenv(*args)
+        else:
+            return self._lmod_getenv(*self.modules)
+
+    def with_modules(self, *modules):
+        return LmodEnvProvider(self.lmod_path, *modules)
+
+    def _lmod_getenv(self, *module_names):
+        res = subprocess.run([self.lmod_path, "python", "load", *module_names], capture_output=True, text=True, check=True)
+        pattern = r'os\.environ\[("|\')(.*?)("|\')\] = ("|\')(.*?)("|\')'
+        matches = re.findall(pattern, res.stdout)
+        env_dict = {m[1]: m[4] for m in matches}
+        return env_dict
+
 def as_list(item):
     if isinstance(item, list):
         return item
@@ -267,3 +312,203 @@ def as_list(item):
         return list(item)
     
     return [item]
+
+
+class DictArgWrapper:
+    def __init__(self, *arg_dicts):
+        self.dicts = list(arg_dicts)
+
+    def __getattr__(self, item):
+        for d in self.dicts:
+            if item in d:
+                return d[item]
+        raise AttributeError(f"Attribute {item} not found in any of the dictionaries")
+
+    def get(self, key, default=None):
+        for d in self.dicts:
+            if key in d:
+                return d[key]
+        return default
+
+
+
+""" Priority queue executor """
+import sys
+import queue
+import random
+import atexit
+import weakref
+import threading
+from concurrent.futures.thread import ThreadPoolExecutor, _base, _WorkItem, _python_exit, _threads_queues
+
+########################################################################################################################
+#                                                Global variables                                                      #
+########################################################################################################################
+
+NULL_ENTRY = (sys.maxsize, _WorkItem(None, None, (), {}))
+_shutdown = False
+
+########################################################################################################################
+#                                           Before system exit procedure                                               #
+########################################################################################################################
+
+
+def python_exit():
+    """
+
+    Cleanup before system exit
+
+    """
+    global _shutdown
+    _shutdown = True
+    items = list(_threads_queues.items())
+    for t, q in items:
+        q.put(NULL_ENTRY)
+    for t, q in items:
+        t.join()
+
+# change default cleanup
+
+
+atexit.unregister(_python_exit)
+atexit.register(python_exit)
+
+########################################################################################################################
+#                                               Worker implementation                                                  #
+########################################################################################################################
+
+
+def _worker(executor_reference, work_queue):
+    """
+
+    Worker
+
+    :param executor_reference: executor function
+    :type executor_reference: callable
+    :param work_queue: work queue
+    :type work_queue: queue.PriorityQueue
+
+    """
+    try:
+        while True:
+            work_item = work_queue.get(block=True)
+            if work_item[0] != sys.maxsize:
+                work_item = work_item[1]
+                work_item.run()
+                del work_item
+                continue
+            executor = executor_reference()
+            if _shutdown or executor is None or executor._shutdown:
+                work_queue.put(NULL_ENTRY)
+                return
+            del executor
+    except BaseException:
+        _base.LOGGER.critical('Exception in worker', exc_info=True)
+
+
+########################################################################################################################
+#                           Little hack of ThreadPoolExecutor from concurrent.futures.thread                           #
+########################################################################################################################
+
+
+class PriorityThreadPoolExecutor(ThreadPoolExecutor):
+    """
+
+    Thread pool executor with priority queue (priorities must be different, lowest first)
+
+    """
+    def __init__(self, max_workers=None, thread_name_prefix=''):
+        """
+
+        Initializes a new PriorityThreadPoolExecutor instance
+
+        :param max_workers: the maximum number of threads that can be used to execute the given calls
+        :type max_workers: int
+
+        """
+        super(PriorityThreadPoolExecutor, self).__init__(max_workers, thread_name_prefix=thread_name_prefix)
+
+        # change work queue type to queue.PriorityQueue
+
+        self._work_queue = queue.PriorityQueue()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def submit(self, fn, *args, **kwargs):
+        """
+
+        Sending the function to the execution queue
+
+        :param fn: function being executed
+        :type fn: callable
+        :param args: function's positional arguments
+        :param kwargs: function's keywords arguments
+        :return: future instance
+        :rtype: _base.Future
+
+        Added keyword:
+
+        - priority (integer later sys.maxsize)
+
+        """
+        with self._shutdown_lock:
+            if self._shutdown:
+                raise RuntimeError('cannot schedule new futures after shutdown')
+
+            priority = kwargs.get('priority', random.randint(0, sys.maxsize-1))
+            if 'priority' in kwargs:
+                del kwargs['priority']
+
+            f = _base.Future()
+            w = _WorkItem(f, fn, args, kwargs)
+
+            self._work_queue.put((priority, w))
+            self._adjust_thread_count()
+            return f
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _adjust_thread_count(self):
+        """
+
+        Attempt to start a new thread
+
+        """
+        def weak_ref_cb(_, q=self._work_queue):
+            q.put(NULL_ENTRY)
+        if len(self._threads) < self._max_workers:
+            t = threading.Thread(target=_worker,
+                                 args=(weakref.ref(self, weak_ref_cb),
+                                       self._work_queue))
+            t.daemon = True
+            t.start()
+            self._threads.add(t)
+            _threads_queues[t] = self._work_queue
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        """
+
+        Pool shutdown
+souso
+        :param wait: if True wait for all threads to complete
+        :type wait: bool
+
+        """
+        with self._shutdown_lock:
+            self._shutdown = True
+            if cancel_futures:
+                # Drain all work items from the queue, and then cancel their
+                # associated futures.
+                while True:
+                    try:
+                        work_item = self._work_queue.get_nowait()[1]
+                    except queue.Empty:
+                        break
+                    if work_item is not None:
+                        work_item.future.cancel()
+            self._work_queue.put(NULL_ENTRY)
+        if wait:
+            for t in self._threads:
+                t.join()

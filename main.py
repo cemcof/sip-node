@@ -10,15 +10,6 @@ import common
 import threading
 import experiment
 
-# Main task of main is to obtain configuration for this node
-
-# // DONE Prepsat storage engine parametry 
-# // DONE Pouzit v irods engine fs engine a doimplementovat
-# // DONE Poresit target location resolving, vcetne stredni cesty (data 24)
-# // Prosit metadata hadling
-# // In-out data v processingu
-# // U scipionu udelat queue i nonqueue variantu na ciisb pouzit queue variantu
-# // Ukoncovani processingui  
 
 # For debugging stuck threads
 import faulthandler
@@ -26,7 +17,6 @@ import signal
 
 # Trigger a stack trace when SIGUSR1 is received
 signal.signal(signal.SIGUSR1, lambda sig, frame: faulthandler.dump_traceback())
-
 
 aparser = argparse.ArgumentParser(
     prog = 'lims-node',
@@ -76,7 +66,7 @@ if not arguments.sip_api_url:
 
 # ========= Factories, edit them to provide required dependencies ===========
 def lims_api_session_provider():
-        return configuration.create_lims_session(arguments.sip_api_url, arguments.sip_api_key, arguments.sip_api_https_proxy)
+        return configuration.create_lims_session(arguments.sip_api_url, arguments.sip_api_key, arguments.sip_api_https_proxy, verify=not arguments.debug_mode)
 
 def exp_storage_engine_factory(exp: experiment.ExperimentWrapper, e_config: configuration.JobConfigWrapper, logger: logging.Logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     engine = engine or exp.storage.engine

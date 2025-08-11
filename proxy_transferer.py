@@ -8,6 +8,9 @@ import experiment
 import fs_storage_engine
 import shutil
 
+
+# TODO - this should work parallel for experiments!
+
 def find_proxy_destination_directory_helper(exp: experiment.ExperimentWrapper, lims_conf: configuration.LimsConfigWrapper):
      # In order to be able to perform proxy transfer, we need to know which node is the "storage" node for given experiment
     # For now do it this way, not very clean tho:
@@ -48,20 +51,13 @@ class ProxyTransferHandler(configuration.LimsNodeModule):
         # Only raw data rules
         data_rules = data_rules.with_tags("raw", "metadata")
         # Add rules for source patterns
-        data_rules = exp.data_source.get_combined_raw_datarules(data_rules)
+        data_rules = exp.data_source.get_combined_raw_datarules(data_rules, exp.data_source.keep_source_files)
 
-        source_dir = exp.data_source.source_directory
-        def proxy_transfer_handler(source_path: pathlib.Path, data_rule: data_tools.DataRule):
-            path_rel = source_path.relative_to(source_dir)
-            target = destination_dir / path_rel
-            if target.exists() and target.stat().st_mtime >= source_path.stat().st_mtime:
-                return
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_path, target)
-            if data_rule.action == data_tools.TransferAction.MOVE:
-                source_path.unlink()
-            self.logger.info(f"PROXY: {source_path} to {target}")
+        transferer = data_tools.DataAsyncTransferer(
+            data_tools.FsTransferSource(exp.data_source.source_directory),
+            data_tools.FsTransferSource(destination_dir),
+            data_rules,
+            f"proxy_{exp.secondary_id}_{common.pathify_date(exp.dt_created)}"
+        )
 
-        sniffer = data_tools.DataRulesSniffer(source_dir, data_rules, proxy_transfer_handler)
-        sniffer.sniff_and_consume()
-
+        transferer.transfer()

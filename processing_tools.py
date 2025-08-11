@@ -1,11 +1,72 @@
+import configparser
 import logging
 import pathlib
 import experiment
 import typing
+import io
+from enum import Enum, IntEnum
+
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
 from data_tools import DataRulesWrapper, DataRule, TransferCondition
+
+class VoxelType(IntEnum):
+    UNSIGNED_BYTE = 1  # Typically uint8
+    SIGNED_INT32 = 2   # Typically int32
+
+class MovieFormat(Enum):
+    TIFF = "tiff"
+    MRC = "mrc"
+    MRCS = "mrcs"
+    EER = "eer"
+
+class MovieMetadata:
+    @property
+    def movie_format(self):
+        raise NotImplementedError()
+
+    @property
+    def frame_count(self):
+        raise NotImplementedError()
+
+    @property
+    def voxel_type(self):
+        raise NotImplementedError()
+
+class MdocMovieMetadata(MovieMetadata):
+    def __init__(self, movie_name: pathlib.Path, mdoc_content: str) -> None:
+        parser = configparser.ConfigParser(allow_unnamed_section=True)
+        parser.read_string(mdoc_content)
+        self.parsed_data = parser
+        self.movie_name = movie_name
+
+    @property
+    def movie_format(self):
+        format_map = {
+            ".tiff": MovieFormat.TIFF,
+            ".tif": MovieFormat.TIFF,
+            ".mrc": MovieFormat.MRC,
+            ".mrcs": MovieFormat.MRCS,
+            ".eer": MovieFormat.EER
+        }
+
+        return format_map[self.movie_name.suffix]
+
+    @property
+    def frame_count(self):
+        return int(self.parsed_data["FrameSet = 0"]["NumSubFrames"])
+
+    @property
+    def voxel_type(self):
+        voxel_type_map = {
+            MovieFormat.TIFF: VoxelType.UNSIGNED_BYTE,
+            MovieFormat.MRC: VoxelType.SIGNED_INT32,
+            MovieFormat.MRCS: VoxelType.SIGNED_INT32
+        }
+
+        return voxel_type_map[self.movie_format]
+
 
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
@@ -112,6 +173,20 @@ class EmMoviesHandler:
         return gain_ref_target
 
 
+    def _movie_glob(self, with_meta=True):
+        movie_rule = self.storage_engine.data_rules.get_target_for({"movie", "raw"}, subfiles=with_meta)
+        movie_rule = DataRulesWrapper(movie_rule)
+        return self.storage_engine.glob(movie_rule)
+
+    def count_movies(self):
+        movie_glob = self._movie_glob(with_meta=False)
+        return sum(1 for _ in movie_glob)
+
+    def movie_metadata(self, mov_path: pathlib.Path, mov_met_path) -> MovieMetadata:
+        if mov_met_path.suffix == ".mdoc":
+            return MdocMovieMetadata(mov_path, self.storage_engine.read_file(mov_met_path))
+        else:
+            raise ValueError(f"Unsupported metadata file type {mov_met_path.suffix}")
 
     def find_movie_information(self):
         """ There are several supported data and metadata file types for movies/micrographs
@@ -122,9 +197,8 @@ class EmMoviesHandler:
 
         # Get movie file path
         # movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
-        movie_rule = self.storage_engine.data_rules.get_target_for("movie", "raw", subfiles=True)
-        movie_rule = DataRulesWrapper(movie_rule)
-        movie_glob = self.storage_engine.glob(movie_rule)
+
+        movie_glob = self._movie_glob()
         first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
         if not first_movie:
             return None
@@ -138,7 +212,7 @@ class EmMoviesHandler:
         self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         
         # Now gain file
-        gain_rule = self.storage_engine.data_rules.get_target_for("gain", "raw", subfiles=False)
+        gain_rule = self.storage_engine.data_rules.get_target_for({"gain", "raw"}, subfiles=False)
         gain_rule = DataRulesWrapper(gain_rule)
         if gain_rule.data_rules:
             gain_ref = next(self.storage_engine.glob(gain_rule), None)
@@ -158,7 +232,7 @@ class EmMoviesHandler:
                 
         for prot in filter(lambda x: x["TYPE"] == "ProtImportMovies", workflow):
             # 1) Path to the source files
-            path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0].target
+            path_to_movies_relative : pathlib.Path = self.storage_engine.data_rules.with_tags({"movie", "raw"}).data_rules[0].target
             prot["filesPath"] = str(processing_source_path / path_to_movies_relative) 
             # 2) Pattern of the source files and movie suffix
             movie_path = movies_info[0]

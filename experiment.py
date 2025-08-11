@@ -1,22 +1,27 @@
+import concurrent
 import fnmatch
 import logging
 import pathlib
 import re
+import weakref
 
 import yaml
 import common, configuration
 import json
 import datetime
 import requests
+
+import data_tools
 import logger_db_api
 import datetime
 import enum
 import uuid
 import threading
 import inspect, tempfile
-from typing import List, Union
-from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, list_directory
-
+from typing import List, Union, Tuple
+from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, \
+    list_directory, DataAsyncTransferer
+from concurrent.futures import ThreadPoolExecutor
 
 class JobState(enum.Enum):
     IDLE = "Idle"
@@ -44,9 +49,6 @@ class StorageState(enum.Enum):
     ARCHIVATION_REQUESTED = "ArchivationRequested"
     ARCHIVING = "Archiving"
     ARCHIVED = "Archived"
-    EXPIRATION_REQUESTED = "ExpirationRequested"
-    EXPIRING = "Expiring"
-    EXPIRED = "Expired"
 
 class PublicationState(enum.Enum):
     UNPUBLISHED = "Unpublished"
@@ -56,10 +58,31 @@ class PublicationState(enum.Enum):
     PUBLICATION_REQUESTED = "PublicationRequested"
     PUBLISHED = "Published"
 
+class OperationState(enum.Enum):
+    NOT_APPLICABLE = "NotApplicableOperation"
+    NOT_SCHEDULED = "NotScheduledOperation"
+    SCHEDULED = "ScheduledOperation"
+    REQUESTED = "RequestedOperation"
+    RUNNING = "RunningOperation"
+    FINISHED = "FinishedOperation"
+
+class Operations(enum.Enum):
+    EXPIRATION = "ExpirationOperation"
+    ARCHIVATION = "ArchivationOperation"
+    PUBLICATION = "PublicationOperation"
+
+
 class ExperimentApi:
     def __init__(self, exp_id, http_session: requests.Session):
         self.exp_id = exp_id
         self._http_session = http_session
+
+    @property
+    def session(self):
+        return self._http_session
+
+    def exp_url_base(self):
+        return f"experiments/{self.exp_id}"
         
     def get_experiment(self):
         result = self._http_session.get(f"experiments/{self.exp_id}")
@@ -94,8 +117,31 @@ class ExperimentApi:
 
 
 
+class OperationWrapper:
+    def __init__(self, op_name: str, data, api: ExperimentApi = None):
+        self.data = data
+        self.name = op_name
+        self.api = api
 
-class ExperimentProcessingWrapper:
+    def is_in(self, state: OperationState):
+        return self.data["$type"] == state.value
+
+    def run_operation(self, node_name: str):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/run", params={"node": node_name})
+        result.raise_for_status()
+        self.data = result.json()
+
+    def finish_operation(self, node_name: str, data=None):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/finish", params={"node": node_name}, json=data)
+        result.raise_for_status()
+        self.data = result.json()
+
+    def fail_operation(self, node_name: str, request_again: bool = True):
+        result = self.api.session.post(f"{self.api.exp_url_base()}/operations/{self.name}/fail", params={"node": node_name, "request_again": request_again})
+        result.raise_for_status()
+        self.data = result.json()
+
+class ExperimentProcessingWrapper(common.StateObj):
     def __init__(self, processing_data, exp_api: ExperimentApi):
         self.processing_data = processing_data
         self.exp_api = exp_api
@@ -159,6 +205,9 @@ class ExperimentProcessingWrapper:
     def log_document(self):
         return ExperimentDocumentWrapper(self.processing_data["LogReport"], self.exp_api)
 
+    def get_state(self):
+        return self.state
+
 
 # ------------- Experiment storage ----------------
 class ExperimentDataSourceWrapper:
@@ -203,8 +252,9 @@ class ExperimentDataSourceWrapper:
         
         self._data["DtCleaned"] = now
     
-    def get_combined_raw_datarules(self, raw_rules):
-        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=TransferAction.MOVE, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
+    def get_combined_raw_datarules(self, raw_rules, keep_source_files=False):
+        trans_action = TransferAction.MOVE if not keep_source_files else TransferAction.COPY
+        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=trans_action, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
         # If keeping files on the instrument is requested, use copy action on all, otherwise leave default configured values
         if self.keep_source_files:
             for r in raw_rules:
@@ -231,10 +281,11 @@ class ExperimentStorageWrapper:
         self.exp_api.patch_experiment({"Storage": {"DtLastUpdate": strd}})
         self._exp_data["DtLastUpdate"] = strd
 
+
     @property
-    def archive(self):
-        return self._exp_data["Archive"]
-    
+    def expiration_operation(self):
+        return OperationWrapper("ExpirationOperation", self._exp_data["ExpirationOperation"], self.exp_api)
+
     @property
     def target(self):
         return self._exp_data["Target"]
@@ -271,6 +322,10 @@ class ExperimentPublicationWrapper:
     @property
     def engine(self):
         return self._publication["PublicationEngine"]
+
+    @property
+    def name(self):
+        return self._publication["Name"]
     
     @property
     def draft_id(self):
@@ -291,6 +346,18 @@ class ExperimentPublicationWrapper:
             self.exp_api.patch_experiment_publication({"Publication": {"State": str(value)}})
             self.reload()
 
+    @property
+    def operation(self):
+        return OperationWrapper("PublicationOperation", self._publication["PublicationOperation"], self.exp_api)
+
+class ExperimentPublicationsWrapper:
+    def __init__(self, pubs_data: list, exp_api: ExperimentApi) -> None:
+        self.pubs_data = pubs_data
+        self.exp_api = exp_api
+
+    def publication(self, type: str):
+        exps = map(lambda x: ExperimentPublicationWrapper(x, self.exp_api), self.pubs_data)
+        return next(filter(lambda p: p.engine == type, exps), None)
 
 class ExperimentWrapper:
     def __init__(self, experiment_api: ExperimentApi, data=None):
@@ -319,9 +386,6 @@ class ExperimentWrapper:
             self.exp_api.change_state(value)
             self.reload()
 
-    def to_state_from(self, from_state, to_state):
-        self.exp_api.change_state
-
 
     @property
     def data_source(self):
@@ -334,10 +398,10 @@ class ExperimentWrapper:
     @property    
     def processing(self):
         return ExperimentProcessingWrapper(self._data["Processing"], self.exp_api)
-    
+
     @property
-    def publication(self):
-        return ExperimentPublicationWrapper(self._data["Publication"], self.exp_api)
+    def publications(self):
+        return ExperimentPublicationsWrapper(self._data["Publications"], self.exp_api)
 
     @property
     def secondary_id(self):
@@ -400,11 +464,17 @@ class ExperimentsApi:
     def get_active_experiments(self):
         return self.get_experiments_by_states(exp_state=JobState.ACTIVE)
         
-    def get_experiments(self, queryData={},  subpath=None):
+    def get_experiments(self, queryData=None, subpath=None):
+        queryData = queryData or {}
         path = "experiments" if subpath is None else f"experiments/{subpath}"
         result = self._http_session.get(path, params=queryData)
         expData = result.json()
         return [ExperimentWrapper(self.for_experiment(x["Id"]), x) for x in expData]
+
+    def get_experiments_by_operation_states(self, operations: List[Tuple[Operations, OperationState]]):
+        qrData = [(x.value, y.value) for x, y in operations]
+        exps = self.get_experiments(queryData=qrData, subpath="by_operation")
+        return exps
 
     def get_experiments_by_states(self, exp_state: Union[JobState, List[JobState], None]=None,
                                         storage_state: Union[StorageState, List[StorageState], None]=None,
@@ -459,7 +529,7 @@ class ExperimentDocumentWrapper:
     def upload_files(self, data, append=False):
         return self.exp_api.upload_document_files(self.id, data, append=append)
 
-class ExperimentStorageEngine:
+class ExperimentStorageEngine(data_tools.DataTransferSource):
     def __init__(self, 
                  experiment: ExperimentWrapper, 
                  logger: logging.Logger,
@@ -507,26 +577,6 @@ class ExperimentStorageEngine:
              metastr
         )
 
-    # TODO del?
-    # def determine_relative_target(self, source_file_relative: pathlib.Path, tag=None):
-
-    #     for rule in self.data_rules.with_tags(tag):
-        
-    #         # Does the path match?
-    #         pattens = rule["Patterns"]
-    #         matched = any([fnmatch.fnmatch(str(source_file_relative), p) for p in pattens])
-
-    #         if matched:
-    #             target = pathlib.Path(rule["Target"])
-    #             keep_tree = rule["KeepTree"] if "KeepTree" in rule else False
-    #             if keep_tree:
-    #                 return target / source_file_relative
-    #             else:
-    #                 return target / source_file_relative.name
-
-    #     # No data rule match? Leave it as is
-    #     return source_file_relative
-    
     def get_tag_target_dir(self, *tags):
         dr = self.data_rules.with_tags(*tags)
         if not dr: 
@@ -569,74 +619,27 @@ class ExperimentStorageEngine:
         raw_rules = self.exp.data_source.get_combined_raw_datarules(raw_rules)
         return self.upload(source_path, raw_rules, session_name="raw")
 
-    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, log=True):
-        def sniff_consumer(source_path: pathlib.Path, data_rule: DataRule):
-            try:
-                relative_target = data_rule.translate_to_target(source_path.relative_to(source))
-                absolute_target = self.resolve_target_location(relative_target)
-                # Skip if target is same as the source 
-                # print("UP SKIPCHECK", source_path, absolute_target)
-                if absolute_target is not None and absolute_target == source_path:
-                    return
-                put_result = self.put_file(relative_target, source_path, condition=data_rule.condition)
-                if put_result:
-                    tdelta, fsize = put_result
-                    if log:
-                        self.logger.info(f"UPLOAD [{', '.join(data_rule.tags)}]; {common.sizeof_fmt(fsize)}, {tdelta:.3f} sec \n {source_path.name}")
-                    if data_rule.action == TransferAction.MOVE:
-                        try:
-                            source_path.unlink()
-                        except Exception as e: 
-                            self.logger.error(f"Failed to remove {source_path}: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to transfer {source_path} to {relative_target}: {e}")
-                raise
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None):
 
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}.dat" if session_name else None
-        sniffer = DataRulesSniffer(source, rules, sniff_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
-    
+        transferer = DataAsyncTransferer(data_tools.FsTransferSource(source), self, rules,
+                                         f"{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}",
+                                         self.logger)
+        result = transferer.transfer()
+        return result
+
     def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
         data_rules = data_rules or self.data_rules
-        def download_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
-            absolute_target = target / data_rule.translate_to_target(source_path_relative)
-            absolute_source = self.resolve_target_location(source_path_relative)
-            # Skip if target is same as the source 
-            print("DW SKIPCHECK", absolute_source, absolute_target)
-            if absolute_source is not None and absolute_target == absolute_source:
-                return
-            absolute_target.parent.mkdir(parents=True, exist_ok=True)
-            self.get_file(source_path_relative, absolute_target)
+        transferer = DataAsyncTransferer(self, data_tools.FsTransferSource(target), data_rules, f"{session_name}_{self.exp.secondary_id}")
+        return transferer.transfer()
 
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
-        sniffer = DataRulesSniffer(self.glob, data_rules, download_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
-    
     def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, transfer_action: TransferAction=TransferAction.COPY):
         """ Transfer data from this storage to another """
         if data_rules is None:
             data_rules = DataRulesWrapper([DataRule("**/*", ["all"], keep_tree=True, condition=TransferCondition.ALWAYS)])
 
-        buffer_file = pathlib.Path(tempfile.gettempdir()) / f"_transfer_buffer_{self.exp.secondary_id}.dat"
-
-        def transfer_consumer(source_path_relative: pathlib.Path, data_rule: DataRule):
-            source_abs_path = self.resolve_target_location(source_path_relative)
-            target_rel_path = data_rule.translate_to_target(source_path_relative)
-            print("TRANSFER TO: ", source_path_relative, source_abs_path, target_rel_path)
-            if source_abs_path is None:
-                # We do not have access to the file directly in filesystem - need to use buffer file 
-                self.get_file(source_path_relative, buffer_file)
-                target.put_file(target_rel_path, buffer_file, condition=data_rule.condition)
-            else:
-                target.put_file(target_rel_path, source_abs_path, condition=data_rule.condition)
-                
-            if transfer_action == TransferAction.MOVE:
-                self.del_file(source_path_relative)
-        
-        tmp_file = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{session_name}_{self.exp.secondary_id}.dat" if session_name else None
-        print(tmp_file)
-        sniffer = DataRulesSniffer(self.glob, data_rules, transfer_consumer, tmp_file)
-        return sniffer.sniff_and_consume()
+        transferer = DataAsyncTransferer(self, target, data_rules, f"{session_name}_{self.exp.secondary_id}")
+        result = transferer.transfer()
+        return result
 
     def sniff_and_process_metafile(self, source_path):
         source_path = pathlib.Path(source_path)
@@ -647,7 +650,6 @@ class ExperimentStorageEngine:
 
         sniffer = DataRulesSniffer(source_path, meta_rules, sniff_consumer, None, min_nochange_sec=0)
         sniffer.sniff_and_consume()
-
 
     def download_raw(self, target: pathlib.Path):
         dr = DataRule('Raw/**/*.*', "raw", keep_tree=True)
@@ -714,39 +716,41 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
         super().__init__(name, logger, lims_logger, config, api_session)
         self.exp_storage_engine_factory = exp_storage_engine_factory
         self.exec_state = {}
+        self.state_lock = threading.Lock()
+        self.executor = None if not self.is_parallel else ThreadPoolExecutor(max_workers=self.parallel, thread_name_prefix=name)
+        self._finalizer = None if not self.is_parallel else weakref.finalize(self, self.executor.shutdown, wait=False)
 
     def _get_experiment_storage_engine(self, e: ExperimentWrapper):
         exp_logger = logger_db_api.experiment_logger_adapter(self._lims_logger, e.id)
         exp_config = self.module_config.lims_config.get_experiment_config(e.instrument, e.technique)
          
         return self.exp_storage_engine_factory(e, exp_config, exp_logger, self.module_config)
-    
+
+    @property
+    def parallel(self):
+        str_val = self.module_config.get("parallel", 0)
+        return int(str_val)
+
     @property
     def is_parallel(self):
-        return self.module_config.get("parallel", False)
-    
-    def _clean_finished_threads(self):
-        for exp_id, thrd in list(self.exec_state.items()):
-            if not thrd.is_alive():
-                del self.exec_state[exp_id]
+        return self.parallel > 0
     
     def step(self):
-        self._clean_finished_threads()
-        
         experiments = self.provide_experiments()
 
-        def step_exp_helper(exp_engine):
+        def step_exp_helper(e_engine):
             try:
-                self.step_experiment(exp_engine)
+                self.step_experiment(e_engine)
             except Exception as e:
                 self.logger.exception(e)
+            finally:
+                with self.state_lock:
+                    self.exec_state.pop(e_engine.exp.id, None)
 
-        def wrap_step_parallel(exp_engine):
-            if exp_engine.exp.id in self.exec_state:
-                return
-            thrd = threading.Thread(target=step_exp_helper, args=(exp_engine,))
-            thrd.start()
-            self.exec_state[exp_engine.exp.id] = thrd
+        def wrap_step_parallel(e_engine):
+            with self.state_lock:
+                if e_engine.exp.id not in self.exec_state:
+                    self.exec_state[e_engine.exp.id] = self.executor.submit(step_exp_helper, e_engine)
 
         for e in experiments:
             try:
