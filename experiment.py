@@ -322,6 +322,10 @@ class ExperimentPublicationWrapper:
     @property
     def engine(self):
         return self._publication["PublicationEngine"]
+
+    @property
+    def name(self):
+        return self._publication["Name"]
     
     @property
     def draft_id(self):
@@ -353,7 +357,7 @@ class ExperimentPublicationsWrapper:
 
     def publication(self, type: str):
         exps = map(lambda x: ExperimentPublicationWrapper(x, self.exp_api), self.pubs_data)
-        return next(filter(lambda p: p.engine == type, exps))
+        return next(filter(lambda p: p.engine == type, exps), None)
 
 class ExperimentWrapper:
     def __init__(self, experiment_api: ExperimentApi, data=None):

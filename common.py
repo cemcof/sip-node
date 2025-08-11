@@ -42,6 +42,17 @@ def pathify_date(dt: datetime.datetime):
     """Formats a datetime object into a filename-safe string."""
     return dt.strftime("%Y%m%d_%H%M%S")
 
+
+def timestamp():
+    return f"{datetime.datetime.now():%y%m%d_%H%M%S}"
+
+def smaller2powerN(val):
+    for i in range(val - 1, 0, -1):
+        if ((i & (i - 1)) == 0):
+            res = i
+            break
+    return res
+
 def elapsed_since(interval: datetime.timedelta, *sinces : datetime.datetime, dt_from=None):
     """ Return True if the interval has passed since first given date that is not None. Raises if all given dates are None"""
     if not dt_from:
@@ -268,16 +279,24 @@ def lmod_getenv(lmod_path, module_name):
     env_dict = {m[1]: m[4] for m in matches}
     return env_dict
 
-class LmodEnvProvider:
+class IEnvironmentSetup:
+    """ Sets up environment for execution of external tools """
+    def __call__(self, *args, **kwargs) -> dict:
+        raise NotImplementedError()
+
+class LmodEnvProvider(IEnvironmentSetup):
     def __init__(self, lmod_path, *modules) -> None:
         self.lmod_path = lmod_path
         self.modules = modules
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> dict:
         if args:
             return self._lmod_getenv(*args)
         else:
             return self._lmod_getenv(*self.modules)
+
+    def with_modules(self, *modules):
+        return LmodEnvProvider(self.lmod_path, *modules)
 
     def _lmod_getenv(self, *module_names):
         res = subprocess.run([self.lmod_path, "python", "load", *module_names], capture_output=True, text=True, check=True)
@@ -293,6 +312,24 @@ def as_list(item):
         return list(item)
     
     return [item]
+
+
+class DictArgWrapper:
+    def __init__(self, *arg_dicts):
+        self.dicts = list(arg_dicts)
+
+    def __getattr__(self, item):
+        for d in self.dicts:
+            if item in d:
+                return d[item]
+        raise AttributeError(f"Attribute {item} not found in any of the dictionaries")
+
+    def get(self, key, default=None):
+        for d in self.dicts:
+            if key in d:
+                return d[key]
+        return default
+
 
 
 """ Priority queue executor """

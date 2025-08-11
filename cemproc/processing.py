@@ -1,44 +1,20 @@
-from cemproc.tomo import TomoSession, TomoProcessor
-from common import LmodEnvProvider, exec_state, StateObj, parse_timedelta
+from cemproc.tomo import CemcofTomoWorkflow
+from common import LmodEnvProvider, exec_state, StateObj, parse_timedelta, DictArgWrapper
 from configuration import LimsModuleConfigWrapper
 from experiment import ExperimentModuleBase, ProcessingState, ExperimentStorageEngine, ExperimentsApi
 from processing_tools import EmMoviesHandler
+#
+# class Runner:
+#     pass
+#
+# class ThreadRunner(Runner):
+#     def __init__(self):
+#         pass
+#
+#
+# class PbsRunner(Runner):
+#     pass
 
-class Runner:
-    pass
-
-class ThreadRunner(Runner):
-    def __init__(self):
-        pass
-
-
-class PbsRunner(Runner):
-    pass
-
-
-
-
-
-
-class CemprocProcessor(StateObj):
-    def __init__(self, exp_engine: ExperimentStorageEngine, config: LimsModuleConfigWrapper, session):
-        self.exp_engine = exp_engine
-        self.session = session
-        self.config = config
-
-    def get_state(self):
-        return self.exp_engine.exp.processing.state
-
-
-    def uninitialized(self):
-        pass
-
-    def running(self):
-        # Fetch files from storage to preocessing location and upload back new files
-        pass
-
-    def finalizing(self):
-        pass
 
 
 class CemprocProcessingHandler(ExperimentModuleBase):
@@ -59,9 +35,8 @@ class CemprocProcessingHandler(ExperimentModuleBase):
                       exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
-        iconf = self.module_config.get("imod")
+        # iconf = self.module_config.get("imod")
         cconf = self.module_config
-        lmod = LmodEnvProvider(cconf['lmod_path'])
 
         timeout_delta = parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
 
@@ -69,52 +44,40 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         if not "tomo" in exp_engine.exp.processing.processing_data["WorkflowRef"]:
             return
 
-        metadata = exp_engine.exp.processing.workflow
-        working_dir = exp_engine.resolve_target_location() or cconf["working_dir"]
-        tomo_session = TomoSession(
-            TomoProcessor(working_dir, exp_engine.logger, lmod, **metadata),
-            source_dir=working_dir,
-            exp_storage=exp_engine)
+        arguments = DictArgWrapper(
+            {
+                "source_dir": exp_engine.resolve_target_location(),
+                "working_dir": exp_engine.resolve_target_location() or cconf["working_dir"],
+                "lmod_path": cconf["lmod_path"],
+                "movie_patterns": exp_engine.data_rules.get_target_for("raw", "movie"),
+                "gain_patterns": exp_engine.data_rules.get_target_for("raw", "gain"),
+                "run_mode": "single",
+            },
+            exp_engine.exp.processing.workflow
+        )
 
-        tomo_session.run()
-
-        # processor = CemprocProcessor(exp_engine, cconf, lmod)
-        # processor.exec_state()
-
-
-        def uninitialized():
-
-            exp_engine.exp.processing.state = ProcessingState.READY
-        #
-        # em_handler = EmMoviesHandler(storage_engine=exp_engine)
-        # mov, meta, gain = em_handler.find_movie_information()
-        # if not mov:
-        #     return
-        # if gain:
-        #     gain = working_dir / em_handler.convert_gain_reference(gain)
-
+        tomo_workflow = CemcofTomoWorkflow(arguments, exp_engine.logger)
 
         print("Processing cemproc! ")
-
 
         def to_run():
             exp_engine.exp.processing.state = ProcessingState.RUNNING
 
-        def invalid_state():
-            raise Exception("Invalid state")
-
         def running():
-            tomo_session.run()
+            tomo_workflow.run_single()
 
         def finalizing():
-            pass
+            exp_engine.exp.processing.state = ProcessingState.COMPLETED
+
+        def stop_requested():
+            exp_engine.exp.processing.state = ProcessingState.FINALIZING
 
         exec_state(exp_engine.exp.processing,
        {
-           ProcessingState.UNINITIALIZED: cw.create_project,
-           ProcessingState.READY: cw.run_project,
+           ProcessingState.UNINITIALIZED: to_run,
+           ProcessingState.READY: to_run,
            ProcessingState.RUNNING: running,
-           ProcessingState.STOP_REQUESTED: cw.stop_project,
+           ProcessingState.STOP_REQUESTED: stop_requested,
            ProcessingState.FINALIZING: finalizing,
            ProcessingState.COMPLETED: lambda: None,
            ProcessingState.DISABLED: lambda: None,

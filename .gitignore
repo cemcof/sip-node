@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
+jirkova_implementace
+
 # C extensions
 *.so
 

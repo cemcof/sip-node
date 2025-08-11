@@ -1,13 +1,72 @@
+import configparser
 import logging
 import pathlib
 import experiment
 import typing
+import io
+from enum import Enum, IntEnum
 
-from cemproc.tomoGPUA import moveFromScope
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
 from data_tools import DataRulesWrapper, DataRule, TransferCondition
+
+class VoxelType(IntEnum):
+    UNSIGNED_BYTE = 1  # Typically uint8
+    SIGNED_INT32 = 2   # Typically int32
+
+class MovieFormat(Enum):
+    TIFF = "tiff"
+    MRC = "mrc"
+    MRCS = "mrcs"
+    EER = "eer"
+
+class MovieMetadata:
+    @property
+    def movie_format(self):
+        raise NotImplementedError()
+
+    @property
+    def frame_count(self):
+        raise NotImplementedError()
+
+    @property
+    def voxel_type(self):
+        raise NotImplementedError()
+
+class MdocMovieMetadata(MovieMetadata):
+    def __init__(self, movie_name: pathlib.Path, mdoc_content: str) -> None:
+        parser = configparser.ConfigParser(allow_unnamed_section=True)
+        parser.read_string(mdoc_content)
+        self.parsed_data = parser
+        self.movie_name = movie_name
+
+    @property
+    def movie_format(self):
+        format_map = {
+            ".tiff": MovieFormat.TIFF,
+            ".tif": MovieFormat.TIFF,
+            ".mrc": MovieFormat.MRC,
+            ".mrcs": MovieFormat.MRCS,
+            ".eer": MovieFormat.EER
+        }
+
+        return format_map[self.movie_name.suffix]
+
+    @property
+    def frame_count(self):
+        return int(self.parsed_data["FrameSet = 0"]["NumSubFrames"])
+
+    @property
+    def voxel_type(self):
+        voxel_type_map = {
+            MovieFormat.TIFF: VoxelType.UNSIGNED_BYTE,
+            MovieFormat.MRC: VoxelType.SIGNED_INT32,
+            MovieFormat.MRCS: VoxelType.SIGNED_INT32
+        }
+
+        return voxel_type_map[self.movie_format]
+
 
 class GainRefConverter:
     """ Given path to gain file, can convert it to different format. Puts the result into the same directory as the source file. """
@@ -121,7 +180,13 @@ class EmMoviesHandler:
 
     def count_movies(self):
         movie_glob = self._movie_glob(with_meta=False)
-        return len(movie_glob)
+        return sum(1 for _ in movie_glob)
+
+    def movie_metadata(self, mov_path: pathlib.Path, mov_met_path) -> MovieMetadata:
+        if mov_met_path.suffix == ".mdoc":
+            return MdocMovieMetadata(mov_path, self.storage_engine.read_file(mov_met_path))
+        else:
+            raise ValueError(f"Unsupported metadata file type {mov_met_path.suffix}")
 
     def find_movie_information(self):
         """ There are several supported data and metadata file types for movies/micrographs
