@@ -80,6 +80,10 @@ class IrodsCollectionWrapper:
 
         experiment_dataobj = self.irods_session.data_objects.get(str(pth)) 
         return experiment_dataobj.open(mode)
+
+    def get_dataobject(self, path_relative: pathlib.Path):
+        pth = self.collection_path / path_relative
+        return self.irods_session.data_objects.get(str(pth))
     
     def generate_ticket(self, permission='read'):
         return Ticket(self.irods_session).issue(permission, self.collection_path).string
@@ -256,7 +260,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         if sumtype not in self.supported_checksums():
             raise ValueError(f"Checksum type {sumtype} not supported by iRODS")
 
-        dataobj = self.irods_collection.collection.data_objects.get(str(path_relative))
+        dataobj = self.irods_collection.get_dataobject(path_relative)
         sum = dataobj.chksum(FORCE_CHKSUM_KW='')
         prefix, basehash = sum[0:5], sum[5:]
         if prefix == 'sha2:':

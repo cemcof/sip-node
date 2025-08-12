@@ -376,7 +376,7 @@ class DataAsyncTransferer:
         absolute_target.parent.mkdir(parents=True, exist_ok=True)
         start_ts = time.time()
         self.source.get_file(file, absolute_target)
-        return start_ts
+        return time.time() - start_ts
 
 
     def _transfer_strategy_upload(self, file: pathlib.Path, data_rule: DataRule):
@@ -409,8 +409,8 @@ class DataAsyncTransferer:
         src_loc, trg_loc = self.source.resolve_target_location() is not None, self.target.resolve_target_location() is not None
         map = {
             (True, True): self._transfer_strategy_fs_direct,
-            (True, False): self._transfer_strategy_download,
-            (False, True): self._transfer_strategy_upload,
+            (True, False): self._transfer_strategy_upload,
+            (False, True): self._transfer_strategy_download,
             (False, False): self._transfer_strategy_buffer_file
         }
         return map[(src_loc, trg_loc)]
