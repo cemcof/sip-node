@@ -249,7 +249,7 @@ class DataTransferTarget:
     def put_file(self, target_path: pathlib.Path, source_path: pathlib.Path) -> bool:
         raise NotImplementedError()
 
-    def is_same(self, other: 'DataTransferTarget', path: pathlib.Path) -> bool:
+    def is_same(self, other: 'DataTransferTarget') -> bool:
         raise NotImplementedError()
 
 
@@ -298,6 +298,9 @@ class FsTransferSource(DataTransferSource):
         # Ensure target directory for the file exists
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src_file, target)
+
+    def is_same(self, other):
+        return isinstance(other, FsTransferSource) and other.root == self.root
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
         file_path = self.resolve_target_location(path_relative)
@@ -419,7 +422,7 @@ class DataAsyncTransferer:
         }
         return map[(src_loc, trg_loc)]
 
-    async def  transfer_unit(self, file: pathlib.Path, strategy: callable, data_rule: DataRule, order: int):
+    async def transfer_unit(self, file: pathlib.Path, strategy: callable, data_rule: DataRule, order: int):
         initial_modify, initial_size  = self.source.stat(file)
         initial_time = time.time()
 
@@ -438,7 +441,7 @@ class DataAsyncTransferer:
 
         took_time = time.time() - stime
         print(f"[{order}] Finished transfer, time: {transfer_time:.3f}, took: {took_time:.3f}")
-
+        
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_modify, initial_size):
             raise TargetNotSameSizeOrModifyError()
@@ -499,7 +502,7 @@ class DataAsyncTransferer:
             if dr.condition == TransferCondition.IF_MISSING and last_transfer_modtime is not None:
                 continue
 
-            if self.source.is_same(self.target, f):
+            if self.source.is_same(self.target) and dr.translate_to_target(f) == f:
                 # In this case, do not copy! Locations are the same and we just mark as done!
                 _mark_as_done_helper(f, modif)
                 continue
