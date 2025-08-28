@@ -2,6 +2,7 @@ import argparse
 import datetime
 import importlib
 import logging
+import sys
 import time
 import configuration
 import logger_db_api
@@ -10,13 +11,12 @@ import common
 import threading
 import experiment
 
-
-# For debugging stuck threads
-import faulthandler
-import signal
-
 # Trigger a stack trace when SIGUSR1 is received
-signal.signal(signal.SIGUSR1, lambda sig, frame: faulthandler.dump_traceback())
+# For debugging stuck threads
+if sys.platform != "win32":
+    import faulthandler
+    import signal
+    signal.signal(signal.SIGUSR1, lambda sig, frame: faulthandler.dump_traceback())
 
 aparser = argparse.ArgumentParser(
     prog = 'lims-node',
