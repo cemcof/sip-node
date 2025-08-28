@@ -1,7 +1,9 @@
+import pathlib
+
 from cemproc.tomo import CemcofTomoWorkflow
 from common import LmodEnvProvider, exec_state, StateObj, parse_timedelta, DictArgWrapper
 from configuration import LimsModuleConfigWrapper
-from experiment import ExperimentModuleBase, ProcessingState, ExperimentStorageEngine, ExperimentsApi
+from experiment import ExperimentModuleBase, ProcessingState, ExperimentStorageEngine, ExperimentsApi, JobState
 from processing_tools import EmMoviesHandler
 #
 # class Runner:
@@ -31,7 +33,7 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         )
 
         return filter(lambda e: e.processing.engine == "cemproc" and (
-                    e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name),
+                    not e.processing.node_name or e.processing.node_name == self.module_config.lims_config.node_name),
                       exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
@@ -44,10 +46,11 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         if not "tomo" in exp_engine.exp.processing.processing_data["WorkflowRef"]:
             return
 
+        w_dir = exp_engine.resolve_target_location() or pathlib.Path(cconf["working_dir"]) / f"tomo_{exp_engine.exp.storage.subpath.name}"
         arguments = DictArgWrapper(
             {
-                "source_dir": exp_engine.resolve_target_location(),
-                "working_dir": exp_engine.resolve_target_location() or cconf["working_dir"],
+                "source_dir": w_dir,
+                "working_dir": w_dir,
                 "lmod_path": cconf["lmod_path"],
                 "movie_patterns": exp_engine.data_rules.get_target_for("raw", "movie"),
                 "gain_patterns": exp_engine.data_rules.get_target_for("raw", "gain"),
@@ -59,14 +62,29 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         tomo_workflow = CemcofTomoWorkflow(arguments, exp_engine.logger)
 
         print("Processing cemproc! ")
+        def rn(no_new_mics_expected=False):
+            if w_dir != exp_engine.resolve_target_location():
+                dw_result, errs = exp_engine.download_raw(w_dir)
+
+            tomo_workflow.run_single(no_new_mics_expected)
+
+            if w_dir != exp_engine.resolve_target_location():
+                # Return new data from processing project -> storage
+                up_result, errs = exp_engine.upload_proc(w_dir)
 
         def to_run():
             exp_engine.exp.processing.state = ProcessingState.RUNNING
 
         def running():
-            tomo_workflow.run_single()
+            rn()
+
+            is_still_active = exp_engine.exp.state == JobState.ACTIVE
+            if not is_still_active:
+                exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
 
         def finalizing():
+            rn(no_new_mics_expected=True)
+            tomo_workflow.cleanup()
             exp_engine.exp.processing.state = ProcessingState.COMPLETED
 
         def stop_requested():

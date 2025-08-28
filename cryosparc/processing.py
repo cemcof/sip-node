@@ -165,7 +165,7 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
                        ProcessingState.FINALIZING]
             )
         
-        return filter(lambda e: e.processing.engine == "cryosparc" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
+        return filter(lambda e: e.processing.engine == "cryosparc" and (not e.processing.node_name or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         cconf = self.module_config["cryosparc_config"]

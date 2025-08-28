@@ -296,7 +296,7 @@ class ExperimentStorageWrapper:
     
     @property
     def subpath(self):
-        return self._exp_data["SubPath"]    
+        return pathlib.Path(self._exp_data["SubPath"])
     
     @property
     def token(self):
@@ -652,13 +652,19 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         sniffer.sniff_and_consume()
 
     def download_raw(self, target: pathlib.Path):
-        dr = DataRule('Raw/**/*.*', "raw", keep_tree=True)
+        dr = DataRule('Raw/**/*.*', "raw", keep_tree=True, checksum=False)
         dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download")
         return dw_result, errs
     
     def upload_processed(self, source: pathlib.Path, target: pathlib.Path):
         dr = DataRule('**/*.*', "processed", target=target, keep_tree=True, condition=TransferCondition.IF_NEWER)
         up_result, errs = self.upload(source, DataRulesWrapper([dr]), session_name="cs_processed_upload")
+        return up_result, errs
+
+    def upload_proc(self, source: pathlib.Path):
+        dr = self.data_rules.with_tags("processed")
+
+        up_result, errs = self.upload(source, dr, session_name="cs_proc_upload")
         return up_result, errs
     
     def extract_metadata(self):

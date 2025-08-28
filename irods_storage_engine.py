@@ -72,6 +72,10 @@ class IrodsCollectionWrapper:
     def exists(self,relative_path: pathlib.Path):
         return self.irods_session.data_objects.exists(str(self.collection_path / relative_path))
 
+    def stat(self, path_relative: pathlib.Path):
+        dataobj = self.irods_session.data_objects.get(str(self.collection_path / path_relative))
+        return dataobj.size, dataobj.modify_time.timestamp()
+
     def open_dataobject(self, path, mode="r+"):
         pth = self.collection_path / path
         exists = self.irods_session.data_objects.exists(str(pth))
@@ -247,8 +251,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     def stat(self, path_relative: pathlib.Path):
         if self.fs_underlying_storage:
             return self.fs_underlying_storage.stat(path_relative)
-        dataobj = self.irods_collection.collection.data_objects.get(str(path_relative))
-        return dataobj.size, dataobj.modify_time.timestamp()
+        return self.irods_collection.stat(path_relative)
 
     def supported_checksums(self):
         return ['sha256']

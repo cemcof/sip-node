@@ -1,5 +1,6 @@
 import pathlib
 import sys
+import typing
 from collections import defaultdict
 
 import numpy as np
@@ -12,27 +13,53 @@ from cemproc.micrograph import Micrograph
 
 class TiltSeries:
     def __init__(self, series_id: int):
-        self.micrographs = []
+        self.micrographs = [] # Keep sorted by tilt angle
         self.series_id = series_id
         self.series_name = f"tomo{series_id}"
 
         self.stack_file = None
         self.stack_pw_file = None
+        self.tilt_angle_file = None
+        self.ctf_results_file = None
+        self.raw_movies_file = None
+        self.are_tomo_result = None
 
     def add_micrograph(self, mic: Micrograph):
         self.micrographs.append(mic)
+        self.micrographs.sort(key=lambda x: x.metadata.tilt_angle)
 
     def stack(self, out_file: pathlib.Path, out_file_pw: pathlib.Path, imod_runner: Imod):
         self.stack_file = out_file
         self.stack_pw_file = out_file_pw
 
-        frames = [mic.corrected_data_file for mic in sorted(self.micrographs, key=lambda x: x.metadata.tilt_angle)]
+        frames = [mic.corrected_data_file for mic in self.micrographs]
         imod_runner.newstack(frames, out_file)
 
-        frames_pw = [mic.ctf_pwr_file for mic in sorted(self.micrographs, key=lambda x: x.metadata.tilt_angle)]
+        frames_pw = [mic.ctf_result.mrc_pw for mic in self.micrographs]
         imod_runner.newstack(frames_pw, out_file_pw)
 
         return out_file, out_file_pw
+
+    def dump_ctf_results(self, out_file: pathlib.Path):
+        with open(out_file, "w") as f:
+            header, _ = self.micrographs[0].ctf_result.tabular_results()
+            f.write(header)
+            f.write("\n")
+            for mic in self.micrographs:
+                f.write(f"{mic.ctf_result.tabular_results()[1]}\n")
+        self.ctf_results_file = out_file
+
+    def dump_tilt_angles(self, out_file: pathlib.Path):
+        with open(out_file, "w") as f:
+            for mic in self.micrographs:
+                f.write(f"{round(mic.metadata.tilt_angle,2):.2f}\n")
+        self.tilt_angle_file = out_file
+
+    def dump_raw_movies(self, out_file: pathlib.Path):
+        self.raw_movies_file = out_file
+        with open(out_file, "w") as f:
+            for mic in self.micrographs:
+                f.write(f"{mic.data_file.name}\n")
 
     def has_angle(self, angle):
         for mic in self.micrographs:
@@ -52,6 +79,10 @@ class TiltSeries:
         target.mkdir(exist_ok=True, parents=True)
         self.stack_file.rename(target / self.stack_file.name)
         self.stack_pw_file.rename(target / self.stack_pw_file.name)
+        self.ctf_results_file.rename(target / self.ctf_results_file.name)
+        self.tilt_angle_file.rename(target / self.tilt_angle_file.name)
+        self.raw_movies_file.rename(target / self.raw_movies_file.name)
+        self.are_tomo_result.move(target)
 
 
 class IStageSeries:
@@ -65,17 +96,22 @@ class IStageSeries:
 
 
 class StageSeriesAngleBased(IStageSeries):
-    def __init__(self, current_tilt_id: int, stage_pos_eps=2):
+    def __init__(self, current_tilt_id: int, first_mic=None, stage_pos_eps=2):
         self.tilt_series = []
         self.stage_pos_eps = stage_pos_eps
         self.current_tilt_id = current_tilt_id
+        if first_mic:
+            added = self.try_add_micrograph(first_mic)
+            assert added, "First micrograph should be accepted"
 
     def try_add_micrograph(self, in_mic: Micrograph):
-
         # Check if this is new stage position
         for i_tlt in self.tilt_series:
             for i_mic in i_tlt.micrographs:
                 if common.euclidean_distance(in_mic.metadata.stage_pos, i_mic.metadata.stage_pos) > self.stage_pos_eps:
+                    print(f"Stage too far: {common.euclidean_distance(in_mic.metadata.stage_pos, i_mic.metadata.stage_pos)} > {self.stage_pos_eps}\n"
+                          f"{in_mic.data_file.name}: {in_mic.metadata} \n"
+                          f"{i_mic.data_file.name}: {i_mic.metadata}")
                     return False
 
         # Find tilt series whose point is closest and still doesnt have micrograph with given angle
@@ -96,7 +132,7 @@ class StageSeriesAngleBased(IStageSeries):
         tlt.add_micrograph(in_mic)
         return True
 
-    def find_tilt_series(self):
+    def find_tilt_series(self) -> typing.List[TiltSeries]:
         return self.tilt_series
 
 class StageSeriesClustering(IStageSeries):

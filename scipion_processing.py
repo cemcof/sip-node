@@ -332,7 +332,7 @@ class ScipionProcessingHandler(ExperimentModuleBase):
             )
         
 
-        return filter(lambda e: e.processing.engine == "scipion" and (e.processing.node_name == "any" or e.processing.node_name == self.module_config.lims_config.node_name), exps)
+        return filter(lambda e: e.processing.engine == "scipion" and (not e.processing.node_name or e.processing.node_name == self.module_config.lims_config.node_name), exps)
 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         exp = exp_engine.exp

@@ -1,7 +1,9 @@
 import pathlib
+import shutil
 import time
 
 import data_tools
+from cemproc.are_tomo import AreTomo
 
 from cemproc.ctf import CtfFind5
 from cemproc.imod import Imod
@@ -26,6 +28,7 @@ class CemcofTomoWorkflow:
 
         self.source_dir = args.source_dir
         self.working_dir = args.working_dir
+        self.working_dir.mkdir(parents=True, exist_ok=True)
         self.run_dir = self.working_dir / "_run"
 
         self.movie_patterns = DataRulesWrapper(args.movie_patterns) if isinstance(args.movie_patterns, data_tools.DataRule) \
@@ -38,8 +41,8 @@ class CemcofTomoWorkflow:
         self.processed_mics = set()
         self.next_tilt_id = 0
 
-        self.current_stage = StageSeriesAngleBased(self.next_tilt_id)
         self._load_state()
+        self.current_stage = StageSeriesAngleBased(self.next_tilt_id)
 
         self.run_continuously = args.run_mode == "continuous"
 
@@ -71,6 +74,18 @@ class CemcofTomoWorkflow:
             min_phase_shift=args.min_phase_shift,
             max_phase_shift=args.max_phase_shift)
 
+        self.are_tomo_runner = AreTomo(
+            lmod=lmod_provider.with_modules(
+                args.get('aretomo_module', ' areTomo/1.3.4'),
+                args.get('cuda_module', 'cuda/11.6.1')),
+            out_dir=self.run_dir,
+            apix=args.apix,
+            binning=args.tomo_bin,
+            tilt_axis=args.tilt_axis,
+            voltage=args.voltage,
+            thickness=args.vol_z
+        )
+
         self.imod_runner = Imod(env_setup=lmod_provider.with_modules(args.get('imod_module', 'imod')))
 
 
@@ -90,15 +105,15 @@ class CemcofTomoWorkflow:
 
         # Lets run ctf estimation
         ctf_pwr_path = self.run_dir / (mic.data_file.stem + "_pwr.mrc")
-        mic.ctf_pwr_file, mic.ctf_info_file = self.ctf_runner.run(mic.corrected_data_file, ctf_pwr_path, skip_if_results_exist=True)
+        mic.ctf_result = self.ctf_runner.run(mic.corrected_data_file, ctf_pwr_path, skip_if_results_exist=True)
 
         # After this is done, lets give this to group
         added = self.current_stage.try_add_micrograph(mic)
         self.logger.info("TOMO: micrograph generated, adding to tilt series")
         if not added:
-            self.logger.info(f"TOMO: stage position completed, generating tilt series and tomograms...")
+            self.logger.info(f"TOMO: stage shift () completed, generating tilt series and tomograms...")
             tilt_sers = self.process_stage()
-            self.current_stage = StageSeriesAngleBased(self.next_tilt_id)
+            self.current_stage = StageSeriesAngleBased(self.next_tilt_id, first_mic=mic)
             return tilt_sers
 
     def set_gainfile(self, path: pathlib.Path):
@@ -112,22 +127,38 @@ class CemcofTomoWorkflow:
 
     def mark_tilt_id(self, tilt_id):
         self.last_id_file.write_text(str(tilt_id))
+        self.next_tilt_id = tilt_id + 1
 
     def process_stage(self):
         tilt_sers = self.current_stage.find_tilt_series()
+        self.logger.info(f"Stage shift, processing {len(tilt_sers)} tilt series")
         for ts in tilt_sers:
+            ts.dump_tilt_angles(self.run_dir / f"tomo_{ts.series_id}.tlt")
+            ts.dump_ctf_results(self.run_dir / f"defocus_file_{ts.series_id}.txt")
+            ts.dump_raw_movies(self.run_dir / f"movies_{ts.series_id}.txt")
+
             # For each titl series - newstack
+            self.logger.info(f"TOMO: stacking tilt series {ts.series_id}")
             ts.stack(
                 self.run_dir / f"tomo_{ts.series_id}.mrc",
                 self.run_dir / f"tomo_{ts.series_id}_pw.mrc",
                 self.imod_runner)
 
+            # Reconstruct tomogram...
+            self.logger.info(f"TOMO: reconstructing tomogram {ts.series_id}")
+            tomogram_file = self.run_dir / f"volume_{ts.series_id}.mrc"
+            ts.are_tomo_result = self.are_tomo_runner.run(ts.stack_file, tomogram_file, ts.tilt_angle_file)
+
             # Tilt series done - mark id, clean, moves...
             ts.move_results(self.working_dir / ts.series_name)
             self.mark_micrographs_as_processed(ts.micrographs)
             self.mark_tilt_id(ts.series_id)
+            self.logger.info(f"TOMO: tilt series {ts.series_id} done")
 
         return tilt_sers
+
+    def cleanup(self):
+        shutil.rmtree(self.run_dir)
 
     def scan_movies(self):
         return data_tools.multiglob(self.source_dir, self.movie_patterns)
@@ -143,7 +174,7 @@ class CemcofTomoWorkflow:
         else:
             return self.run_single()
 
-    def run_single(self):
+    def run_single(self, no_new_mics_expected=False):
         glb_movies = self.scan_movies()
 
         gain_file = self.scan_gainfile()
@@ -152,9 +183,12 @@ class CemcofTomoWorkflow:
 
         try:
             while True:
-                print("CONSMED START")
                 data = next(glb_movies)
                 meta = next(glb_movies)
+
+                # Skip already processed micrographs
+                if data[0].name in self.processed_mics:
+                    continue
 
                 try:
                     mic = Micrograph.parse(self.source_dir / data[0], self.source_dir / meta[0])
@@ -169,8 +203,8 @@ class CemcofTomoWorkflow:
                     continue
                 except Exception as e:
                     self.logger.error(f"Failed to process {data[0]}", exc_info=e)
-
-                print(f"CONSMED END ")
         except StopIteration:
-            pass  # Iterator is exhausted
+            # If no new data will arrive, process last tilt series
+            if no_new_mics_expected:
+                self.process_stage()
 

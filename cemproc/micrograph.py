@@ -22,8 +22,9 @@ class Micrograph:
         self.meta_file = meta_file
         self.metadata = metadata
 
+        self.angle_dose = None
         self.corrected_data_file = None
-        self.ctf_pwr_file = None
+        self.ctf_result = None
 
     @classmethod
     def parse(cls, data_file: pathlib.Path, meta_file: pathlib.Path):

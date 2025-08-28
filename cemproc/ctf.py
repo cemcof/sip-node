@@ -4,6 +4,28 @@ import subprocess
 
 from common import LmodEnvProvider
 
+class CtfResult:
+    def __init__(self, mrc_pw: pathlib.Path, result_txt_file: pathlib.Path):
+        self.mrc_pw = mrc_pw
+        self.result_txt_file = result_txt_file
+
+    def tabular_results(self):
+        """
+        Returns ctf results as strings - [0] = header, [1] = data
+        Output file of ctf looks like this:
+        # Columns: #1 micrograph number; #2 - defocus 1 [A]; #3 - defocus 2; #4 - azimuth of astigmatism; #5 - additional phase shift [radian]; #6 - cross correlation; #7 - spacing (in Angstroms) up to which CTF rings were fit successfully
+        50016.20   48830.05    57.55     0.00    0.02228   10.0000
+        """
+        data_str = self.result_txt_file.read_text()
+        # Get last two lines
+        last_two_lines = data_str.splitlines()[-2:]
+        # First line = tabluar header
+        header = last_two_lines[0]
+        # Second line = tabular data
+        data = last_two_lines[1]
+        return header, data
+
+
 class CtfFind5:
     def __init__(self, out_dir: pathlib.Path, lmod: LmodEnvProvider, voltage, apix, cs, ac, pwr_size, defocus_min, defocus_max, res_min, res_max, phase_plate, min_phase_shift,
                  max_phase_shift,
@@ -82,12 +104,12 @@ class CtfFind5:
         command_input = "\n".join(params) + "\n"
 
         out_info = mrc_pw.parent / f"{mrc_pw.stem}.txt"
-        if not ( skip_if_results_exist and out_info.exists() and mrc_pw.exists() ):
+        if not ( skip_if_results_exist and out_info.exists() and out_info.stat().st_size > 0 and mrc_pw.exists() and mrc_pw.stat().st_size > 0 ):
             result = subprocess.run(self.executable, shell=True, input=command_input, capture_output=True, text=True, env=self.exec_env)
             if result.returncode != 0:
                 raise RuntimeError(f"Failed ctffind {result.returncode} \n IN {command_input} \n ERR: {result.stderr} \n OUT: {result.stdout}")
 
-        return mrc_pw, out_info
+        return CtfResult(mrc_pw, out_info)
         # Attempt to move output file
         # try:
         #     dw_file = mrc_mic.with_name(f"{mrc_mic.stem}_DW.mrc")
