@@ -251,7 +251,7 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         return dataobj.size, dataobj.modify_time.timestamp()
 
     def supported_checksums(self):
-        return ['sha256']
+        return frozenset({'sha256'})
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
         if self.fs_underlying_storage:
@@ -269,7 +269,9 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
             return raw_hash.hex()
         else:
             raise ValueError(f"Invalid checksum format: {sum}")
-
+        
+    def is_same(self, other):
+        return isinstance(other, IrodsExperimentStorageEngine) and self.irods_collection.collection_path == other.irods_collection.collection_path
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)
