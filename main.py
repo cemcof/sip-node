@@ -45,6 +45,11 @@ node_name = arguments.node_name if arguments.node_name else socket.gethostname()
 debug_mode = bool(arguments.debug_mode)
 config = configuration.LimsConfigWrapper(arguments.organization_name, node_name)
 
+# Disable ssl verify warnings
+if debug_mode:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 if arguments.config_file:
     config.from_file(arguments.config_file)
     is_config_master = True

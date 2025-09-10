@@ -249,6 +249,9 @@ class DataTransferTarget:
     def put_file(self, target_path: pathlib.Path, source_path: pathlib.Path) -> bool:
         raise NotImplementedError()
 
+    def is_same(self, other: 'DataTransferTarget') -> bool:
+        raise NotImplementedError()
+
 
 class DataTransferSource(DataTransferTarget):
     def glob(self, data_rules: DataRulesWrapper):
@@ -295,6 +298,9 @@ class FsTransferSource(DataTransferSource):
         # Ensure target directory for the file exists
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src_file, target)
+
+    def is_same(self, other):
+        return isinstance(other, FsTransferSource) and other.root == self.root
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
         file_path = self.resolve_target_location(path_relative)
@@ -398,7 +404,8 @@ class DataAsyncTransferer:
         # In this strategy, we should skip if locations are same
         source, target = self.source.resolve_target_location(file), self.target.resolve_target_location(data_rule.translate_to_target(file))
         if source == target:
-            return
+            raise ValueError("Cannot copy to the same location!")
+
         # Here we perform standard fs copy
         start = time.time()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -431,9 +438,10 @@ class DataAsyncTransferer:
         stime = time.time()
         # print(f"[{order}] Submitting {file}")
         transfer_time = await self._submit(strategy, file, data_rule, priority=order)
+
         took_time = time.time() - stime
         print(f"[{order}] Finished transfer, time: {transfer_time:.3f}, took: {took_time:.3f}")
-
+        
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_modify, initial_size):
             raise TargetNotSameSizeOrModifyError()
@@ -468,6 +476,14 @@ class DataAsyncTransferer:
         errors = []
         successes = []
         metafile_append = self.metafile.open("a") if self.metafile else None
+
+        def _mark_as_done_helper(file, mod):
+            meta[str(file)] = mod
+            successes.append((file, mod))  # TODO what?
+            if metafile_append:
+                metafile_append.write(f"{str(file)}: {mod}\n")
+                metafile_append.flush()
+
         tasks = []
         transfer_strategy = self._determine_transfer_strategy()
 
@@ -484,6 +500,11 @@ class DataAsyncTransferer:
 
             # We do not transfer if already transferred
             if dr.condition == TransferCondition.IF_MISSING and last_transfer_modtime is not None:
+                continue
+
+            if self.source.is_same(self.target) and dr.translate_to_target(f) == f:
+                # In this case, do not copy! Locations are the same and we just mark as done!
+                _mark_as_done_helper(f, modif)
                 continue
 
             # Transfer this unit (schedule)
@@ -505,13 +526,10 @@ class DataAsyncTransferer:
         for tsk in asyncio.as_completed(tasks):
             try:
                 result = await tsk
-                # Success - mark this file as done
-                meta[str(result.file)] = result.modif
-                successes.append((result.file, result.modif)) # TODO what?
-                if metafile_append:
-                    metafile_append.write(f"{str(result.file)}: {result.modif}\n")
-                    metafile_append.flush()
-                message = f"TRANSFER [{', '.join(result.dr.tags)}]; {common.sizeof_fmt(result.size)}, {result.transfer_time:.3f} sec transfer, \n {result.file.name}"
+
+                _mark_as_done_helper(result.file, result.modif)
+
+                message = f"TRANSFER [{', '.join(result.dr.tags)}]; {common.sizeof_fmt(result.size)}, {result.transfer_time:.3f} sec, \n {result.file.name}"
                 if result.checksum:
                     message += f", checksum validated"
                 self.logger.info(message)
