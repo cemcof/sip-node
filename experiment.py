@@ -20,7 +20,7 @@ import threading
 import inspect, tempfile
 from typing import List, Union, Tuple
 from data_tools import DataRulesSniffer, DataRulesWrapper, DataRule, MetadataModel, TransferAction, TransferCondition, \
-    list_directory, DataAsyncTransferer
+    list_directory, DataAsyncTransferer, FnMatchPattern
 from concurrent.futures import ThreadPoolExecutor
 
 class JobState(enum.Enum):
@@ -230,9 +230,20 @@ class ExperimentDataSourceWrapper:
     def source_patterns(self):
         pattlist = self._data["SourcePatterns"]
         for p in pattlist:
-            # Current policy is: if pattern does not contain any / nor *, consider it as a full glob
-            # and prepend **/* to it
-            yield p if "/" in p or "*" in p else "*" + p
+            # For security reasons, we dont accept regexes from data model
+            try:
+                # Current policy is: if pattern does not contain any / nor *, consider it as a full glob
+                # and prepend * to it
+                if p.startswith("."): # Just extension
+                    p = "*" + p
+                if not "/" in p:
+                    # We match any dir/subdir
+                    p = FnMatchPattern.ANY_DIR + "/" + p
+                parsed = FnMatchPattern.parse(p)
+                yield parsed
+            except ValueError:
+                print(">>> ERROR: Invalid pattern: " + p + " - ignoring it.")
+                continue
     
     @property
     def clean_after(self):

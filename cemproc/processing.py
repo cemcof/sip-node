@@ -52,8 +52,8 @@ class CemprocProcessingHandler(ExperimentModuleBase):
                 "source_dir": w_dir,
                 "working_dir": w_dir,
                 "lmod_path": cconf["lmod_path"],
-                "movie_patterns": exp_engine.data_rules.get_target_for("raw", "movie"),
-                "gain_patterns": exp_engine.data_rules.get_target_for("raw", "gain"),
+                "movie_patterns": exp_engine.data_rules.get_target_for({"raw", "movie"}),
+                "gain_patterns": exp_engine.data_rules.get_target_for({"raw", "gain"}),
                 "run_mode": "single",
             },
             exp_engine.exp.processing.workflow
@@ -63,17 +63,13 @@ class CemprocProcessingHandler(ExperimentModuleBase):
 
         print("Processing cemproc! ")
         def rn(no_new_mics_expected=False):
-            if w_dir != exp_engine.resolve_target_location():
-                dw_result, errs = exp_engine.download_raw(w_dir)
-
+            dw_result, errs = exp_engine.download_raw(w_dir)
             tomo_workflow.run_single(no_new_mics_expected)
-
-            if w_dir != exp_engine.resolve_target_location():
-                # Return new data from processing project -> storage
-                up_result, errs = exp_engine.upload_proc(w_dir)
+            up_result, errs = exp_engine.upload_proc(w_dir)
 
         def to_run():
-            exp_engine.exp.processing.state = ProcessingState.RUNNING
+            if exp_engine.exp.state != JobState.START_REQUESTED:
+                exp_engine.exp.processing.state = ProcessingState.RUNNING
 
         def running():
             rn()

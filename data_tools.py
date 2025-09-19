@@ -12,6 +12,7 @@ import os, sys
 import pathlib
 import time
 import shutil
+import re
 import typing
 import traceback
 import yaml
@@ -30,11 +31,65 @@ class TransferCondition(Enum):
     IF_NEWER = "if_newer"
     ALWAYS = "always"
     # IF_DIFFERENT = "IfDifferent"
-    
+
+class PathPattern:
+    def __init__(self, filename: str, dirname: typing.Union[str, pathlib.Path] = None):
+        self.filename = str(filename)
+        self.dirname = dirname
+        self._combined = self.filename if not dirname else str(dirname) + "/" + filename
+
+    @staticmethod
+    def parse(pattern: str):
+        if pattern.startswith("re:"):
+            return RegexPattern.parse(pattern)
+        else:
+            return FnMatchPattern.parse(pattern)
+
+    def with_dir(self, new_dir: pathlib.Path) -> 'PathPattern':
+        raise NotImplementedError()
+
+    def match(self, path: pathlib.Path):
+        raise NotImplementedError()
+
+    def __str__(self):
+        return self._combined
+
+class FnMatchPattern(PathPattern):
+    ANY_DIR = "**"
+
+    def with_dir(self, new_dir: pathlib.Path):
+        return FnMatchPattern(self.filename, new_dir)
+
+    def match(self, path: pathlib.Path):
+        return fnmatch(str(path), self._combined)
+
+    @staticmethod
+    def parse(pattern: str):
+        pth = pathlib.Path(pattern)
+
+        return FnMatchPattern(pth.name, pth.parent)
+
+class RegexPattern(PathPattern):
+    @staticmethod
+    def parse(pattern: str):
+        if pattern.startswith("re:"):
+            pattern = pattern[3:]
+        spl = pattern.rsplit('/', 1)
+        if len(spl) == 1:
+            return RegexPattern(pattern)
+        else:
+            return RegexPattern(spl[1], spl[0])
+
+    def with_dir(self, new_dir: pathlib.Path):
+        return RegexPattern(self.filename, new_dir)
+
+    def match(self, path: pathlib.Path):
+        return re.match(self._combined, str(path))
+
 class DataRule:
     def __init__(self, 
-                 patterns: typing.Union[typing.List[str], str], 
-                 tags: typing.Union[typing.List[str], str], 
+                 patterns: typing.Union[typing.List[PathPattern], str],
+                 tags: typing.Union[typing.List[str], typing.Tuple[str], str],
                  target: str = None, 
                  keep_tree: bool = False, 
                  subfiles=True, 
@@ -44,7 +99,20 @@ class DataRule:
                  delay = 1.0,
                  del_delay = 0.5
                 ) -> None:
-        self.patterns = as_list(patterns)
+
+        # Load patterns
+        self.patterns = []
+        if isinstance(patterns, str):
+            patterns = [patterns]
+
+        for p in patterns:
+            if isinstance(p, PathPattern):
+                self.patterns.append(p)
+            elif isinstance(p, str):
+                self.patterns.append(PathPattern.parse(p))
+            else:
+                raise ValueError(f"Invalid pattern: {p}")
+
         self.tags = as_list(tags)
         self.target = pathlib.Path(target) if target else None
         self.keep_tree = keep_tree
@@ -61,27 +129,27 @@ class DataRule:
         return path_relative
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
-        if self.subfiles: 
+        if self.subfiles:
             return self._match_files_with_subfiles(files, self.patterns)
         else:
             return self._match_files_without_subfiles(files, self.patterns)
 
     @staticmethod
-    def _match_files_without_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[str]):
+    def _match_files_without_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[PathPattern]):
         files = list(files)
         for f in files:
-            if any(fnmatch(str(f), p) for p in patterns):
+            if any(p.match(f) for p in patterns):
                 yield f
 
     @staticmethod
-    def _match_files_with_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[str]):
+    def _match_files_with_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[PathPattern]):
         """ For performance reasons, we need better algorithm than n^2, start by sorting the files,
          then iterating them and upon match, search for subfiles near that match, they should be in one sequence thanks to the sorting """
         files = sorted(files)
         index = 0   
         while index < len(files):
             f = files[index]
-            if any(fnmatch(str(f), p) for p in patterns):
+            if any(p.match(f) for p in patterns):
                 yield f
                 # Now search for subfiles - thanks to sorting, they should be in one sequence with the main file
                 start_index, end_index = DataRule._search_subfiles_indices(files, index)
@@ -119,8 +187,8 @@ class DataRule:
     
     def get_target_patterns(self):
         """ Gets glob pattern through which files for this rule can be searched in the target location """
-        target_base = self.target if not self.keep_tree else self.target / "**"
-        return [str(target_base / pathlib.Path(p).name) for p in self.patterns]
+        new_dir_base = self.target if not self.keep_tree else None
+        return [p.with_dir(new_dir_base or p.dirname) for p in self.patterns]
     
     def __str__(self) -> str:
         return f"DataRule({self.patterns}, {self.tags}, {self.target}, {self.keep_tree}, {self.subfiles}, {self.action}, {self.condition})"
@@ -249,7 +317,7 @@ class DataTransferTarget:
     def put_file(self, target_path: pathlib.Path, source_path: pathlib.Path) -> bool:
         raise NotImplementedError()
 
-    def is_same(self, other: 'DataTransferTarget') -> bool:
+    def is_same(self, other: 'DataTransferTarget', path_src: pathlib.Path, path_dst: pathlib.Path) -> bool:
         raise NotImplementedError()
 
 
@@ -299,8 +367,8 @@ class FsTransferSource(DataTransferSource):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src_file, target)
 
-    def is_same(self, other):
-        return isinstance(other, FsTransferSource) and other.root == self.root
+    def is_same(self, other, path_src: pathlib.Path, path_dst: pathlib.Path):
+        return isinstance(other, FsTransferSource) and other.resolve_target_location(path_dst) == self.resolve_target_location(path_src) is not None
 
     def checksum(self, path_relative: pathlib.Path, sumtype: str):
         file_path = self.resolve_target_location(path_relative)
@@ -502,7 +570,7 @@ class DataAsyncTransferer:
             if dr.condition == TransferCondition.IF_MISSING and last_transfer_modtime is not None:
                 continue
 
-            if self.source.is_same(self.target) and dr.translate_to_target(f) == f:
+            if self.source.is_same(self.target, f, dr.translate_to_target(f)):
                 # In this case, do not copy! Locations are the same and we just mark as done!
                 _mark_as_done_helper(f, modif)
                 continue
@@ -516,7 +584,7 @@ class DataAsyncTransferer:
         # Log what we scanned and queued
         rules_str = ""
         for rule in self.data_rules:
-            rules_str += f"[{', '.join(rule.tags)}] - [{', '.join(rule.patterns)}] \n"
+            rules_str += f"[{', '.join(rule.tags)}] - [{', '.join([str(p) for p in rule.patterns])}] \n"
 
         self.logger.info(f"Scanned and queued {len(tasks)} files of total size {common.sizeof_fmt(total_size_to_transfer)} for transfer. "
                          f"Rules: \n {rules_str}")

@@ -273,8 +273,10 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
         else:
             raise ValueError(f"Invalid checksum format: {sum}")
         
-    def is_same(self, other):
-        return isinstance(other, IrodsExperimentStorageEngine) and self.irods_collection.collection_path == other.irods_collection.collection_path
+    def is_same(self, other, src_relative: pathlib.Path, dst_relative: pathlib.Path):
+        return (isinstance(other, IrodsExperimentStorageEngine) and
+                self.irods_collection.collection_path / src_relative ==
+                other.irods_collection.collection_path / dst_relative)
 
 def irods_storage_engine_factory(exp, e_config: configuration.JobConfigWrapper, logger, module_config: configuration.LimsModuleConfigWrapper, engine: str=None):
     conf: dict = module_config.get(engine or exp.storage.engine)

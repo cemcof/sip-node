@@ -22,6 +22,7 @@ class MotionCorr3:
     def _build_command(self, in_micrograph: pathlib.Path, out_micrograph: pathlib.Path):
         tmap = {
             ".mrcs": f"-InMrc {in_micrograph}",
+            ".mrc": f"-InMrc {in_micrograph}",
             ".tiff": f"-InTiff {in_micrograph}",
             ".tif": f"-InTiff {in_micrograph}",
             ".eer": f"-InEer {in_micrograph}"

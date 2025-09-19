@@ -7,7 +7,7 @@ from cemproc.are_tomo import AreTomo
 
 from cemproc.ctf import CtfFind5
 from cemproc.imod import Imod
-from cemproc.micrograph import Micrograph, InvalidMicrographType
+from cemproc.micrograph import Micrograph, InvalidMicrographType, MicrographScanner
 from cemproc.motioncor import MotionCorr3
 from cemproc.tilt_series import StageSeriesAngleBased
 from common import LmodEnvProvider, StateObj
@@ -158,7 +158,7 @@ class CemcofTomoWorkflow:
         return tilt_sers
 
     def cleanup(self):
-        shutil.rmtree(self.run_dir)
+        shutil.rmtree(self.run_dir, ignore_errors=True)
 
     def scan_movies(self):
         return data_tools.multiglob(self.source_dir, self.movie_patterns)
@@ -175,7 +175,7 @@ class CemcofTomoWorkflow:
             return self.run_single()
 
     def run_single(self, no_new_mics_expected=False):
-        glb_movies = self.scan_movies()
+        glb_movies = MicrographScanner(iter(m[0] for m in self.scan_movies()))
 
         gain_file = self.scan_gainfile()
         if gain_file:
@@ -183,15 +183,14 @@ class CemcofTomoWorkflow:
 
         try:
             while True:
-                data = next(glb_movies)
-                meta = next(glb_movies)
+                data, meta = next(glb_movies)
 
                 # Skip already processed micrographs
-                if data[0].name in self.processed_mics:
+                if data.name in self.processed_mics:
                     continue
 
                 try:
-                    mic = Micrograph.parse(self.source_dir / data[0], self.source_dir / meta[0])
+                    mic = Micrograph.parse(self.source_dir / data, self.source_dir / meta)
                     # We do tilt series processing only if not done on mic...
                     tilt_sers = self.consume_next_micrograph(mic)
                     if tilt_sers:
@@ -199,10 +198,10 @@ class CemcofTomoWorkflow:
                         # If we generated new tilt series, move raw movies accordingly
                         pass
                 except InvalidMicrographType:
-                    self.logger.warning(f"Skipping {data[0]}")
+                    self.logger.warning(f"Skipping {data}")
                     continue
                 except Exception as e:
-                    self.logger.error(f"Failed to process {data[0]}", exc_info=e)
+                    self.logger.error(f"Failed to process {data}", exc_info=e)
         except StopIteration:
             # If no new data will arrive, process last tilt series
             if no_new_mics_expected:
