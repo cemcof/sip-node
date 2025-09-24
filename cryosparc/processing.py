@@ -72,7 +72,7 @@ class CryosparcWrapper(StateObj):
         movie_info = self.em_handler.find_movie_information()
         if not movie_info: # Not ready
             return None
-        path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir("movie", "raw")
+        path_to_movies_relative : pathlib.Path = self.exp_engine.get_tag_target_dir({"raw", "movie"})
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
