@@ -77,7 +77,7 @@ class CemcofTomoWorkflow:
         self.are_tomo_runner = AreTomo(
             lmod=lmod_provider.with_modules(
                 args.get('aretomo_module', ' areTomo/1.3.4'),
-                args.get('cuda_module', 'cuda/11.6.1')),
+                args.get('cuda_module', 'cuda/11.7.1')),
             out_dir=self.run_dir,
             apix=args.apix,
             binning=args.tomo_bin,
