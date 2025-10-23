@@ -57,11 +57,22 @@ class PathPattern:
 class FnMatchPattern(PathPattern):
     ANY_DIR = "**"
 
+    def __init__(self, filename: str, dirname: typing.Union[str, pathlib.Path] = None):
+        super().__init__(filename, dirname)
+        if dirname == self.ANY_DIR:
+            self._combined = str(dirname) + "/" + filename
+        else:
+            self._combined = filename
+
     def with_dir(self, new_dir: pathlib.Path):
         return FnMatchPattern(self.filename, new_dir)
 
     def match(self, path: pathlib.Path):
-        return fnmatch(str(path), self._combined)
+        res = fnmatch(str(path), self._combined)
+        if not res and self.dirname == self.ANY_DIR:
+            # Also include matching just filename itself, without directory (without /)
+            return fnmatch(path.name, self.filename)
+        return res
 
     @staticmethod
     def parse(pattern: str):
@@ -102,7 +113,7 @@ class DataRule:
 
         # Load patterns
         self.patterns = []
-        if isinstance(patterns, str):
+        if isinstance(patterns, str) or isinstance(patterns, PathPattern):
             patterns = [patterns]
 
         for p in patterns:
@@ -512,6 +523,7 @@ class DataAsyncTransferer:
         
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_modify, initial_size):
+            print(f"[{order}] File size/modify changed, aborting transfer: {file}, {initial_modify}, {initial_size}, {self.source.stat(file)}")
             raise TargetNotSameSizeOrModifyError()
 
         # Correct, lets do checksum if desired...
