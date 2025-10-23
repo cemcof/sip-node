@@ -1,6 +1,7 @@
 import configparser
 import pathlib
 import datetime
+from collections import deque
 from typing import Iterable, Iterator, Tuple
 
 
@@ -62,25 +63,21 @@ class MicrographScanner:
     metadata, a ValueError is raised.
     """
     def __init__(self, file_paths: Iterable[pathlib.Path]):
-        self._iterator = iter(pathlib.Path(p) for p in file_paths)
+        self._queue = deque(pathlib.Path(p) for p in file_paths)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        try:
-            data_file = next(self._iterator)
-        except StopIteration:
+        if not self._queue:
             raise StopIteration
+
+        data_file = self._queue.popleft()
 
         mdoc_file: pathlib.Path | None = None
 
-        while True:
-            try:
-                candidate = next(self._iterator)
-            except StopIteration:
-                break
-
+        while self._queue:
+            candidate = self._queue.popleft()
             suffix = candidate.suffix.lower()
 
             if suffix == ".mdoc":
@@ -89,16 +86,11 @@ class MicrographScanner:
                 # ignorar xml y seguir buscando
                 continue
             else:
-                # es otro data_file → devolverlo al iterador
-                self._iterator = self._put_back(candidate, self._iterator)
+                # es otro data_file → devolverlo al iteradorq
+                self._queue.appendleft(candidate)
                 break
 
         if mdoc_file is None:
             raise ValueError(f"No .mdoc metadata found for data file {data_file}")
 
         return data_file, mdoc_file
-
-    def _put_back(self, first_item: pathlib.Path, iterator: Iterator[pathlib.Path]) -> Iterator[pathlib.Path]:
-        """Devuelve un iterador que empieza con first_item y luego continúa con iterator."""
-        yield first_item
-        yield from iterator
