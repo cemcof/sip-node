@@ -141,7 +141,9 @@ class DataRule:
     
     def match_files(self, files: typing.Iterable[pathlib.Path]):
         if self.subfiles:
-            return self._match_files_with_subfiles(files, self.patterns)
+            # True = any subfiles, number > 0 = minimal amout of subfiles
+            min_subfiles = 0 if self.subfiles is True else self.subfiles
+            return self._match_files_with_subfiles(files, self.patterns, min_subfiles)
         else:
             return self._match_files_without_subfiles(files, self.patterns)
 
@@ -153,7 +155,7 @@ class DataRule:
                 yield f
 
     @staticmethod
-    def _match_files_with_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[PathPattern]):
+    def _match_files_with_subfiles(files: typing.Iterable[pathlib.Path], patterns: typing.List[PathPattern], min_subfiles: int = 0):
         """ For performance reasons, we need better algorithm than n^2, start by sorting the files,
          then iterating them and upon match, search for subfiles near that match, they should be in one sequence thanks to the sorting """
         files = sorted(files)
@@ -161,12 +163,20 @@ class DataRule:
         while index < len(files):
             f = files[index]
             if any(p.match(f) for p in patterns):
-                yield f
                 # Now search for subfiles - thanks to sorting, they should be in one sequence with the main file
                 start_index, end_index = DataRule._search_subfiles_indices(files, index)
+                subfiles_count = end_index - start_index
+                if subfiles_count < min_subfiles:
+                    # Skip this match completely
+                    continue
+
+                # First come subfiles
                 for i in range(start_index, end_index + 1):
                     if i != index:
                         yield files[i]
+
+                # Primary file last
+                yield f
                 index = end_index + 1
             else:
                 index = index + 1
