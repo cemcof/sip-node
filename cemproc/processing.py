@@ -43,7 +43,7 @@ class CemprocProcessingHandler(ExperimentModuleBase):
         timeout_delta = parse_timedelta(cconf.get("processing_timeout", "00:10:00.0"))
 
         # For now (dirty way) our engine supports only tomo WF
-        if not "tomo" in exp_engine.exp.processing.processing_data["WorkflowRef"]:
+        if not exp_engine.exp.processing.processing_data["WorkflowRef"].startswith("tomo"):
             return
 
         w_dir = exp_engine.resolve_target_location() or pathlib.Path(cconf["working_dir"]) / f"tomo_{exp_engine.exp.storage.subpath.name}"
