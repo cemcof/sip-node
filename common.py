@@ -1,4 +1,3 @@
-
 import logging
 import math
 import re
@@ -148,15 +147,16 @@ class BaseUrlSession(requests.Session):
         self.base_url = base_url
         self.timeout = timeout
         self.verify = verify
+        self._request_lock = threading.Lock()
 
     def request(self, method, url, *args, **kwargs):
         joined_url = urllib.parse.urljoin(self.base_url, url)
         if not "timeout" in kwargs:
             kwargs["timeout"] = self.timeout
-        res = super().request(method, joined_url, *args, **kwargs)
-        # res.raise_for_status()
-        return res
-    
+        # Ensure requests made through this session are serialized across threads
+        with self._request_lock:
+            return super().request(method, joined_url, *args, **kwargs)
+
 
 class StateObj:
 
@@ -491,7 +491,7 @@ class PriorityThreadPoolExecutor(ThreadPoolExecutor):
         """
 
         Pool shutdown
-souso
+
         :param wait: if True wait for all threads to complete
         :type wait: bool
 
