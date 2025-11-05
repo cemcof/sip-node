@@ -168,6 +168,7 @@ class DataRule:
                 subfiles_count = end_index - start_index
                 if subfiles_count < min_subfiles:
                     # Skip this match completely
+                    index = end_index + 1
                     continue
 
                 # First come subfiles
@@ -608,6 +609,7 @@ class DataAsyncTransferer:
         for rule in self.data_rules:
             rules_str += f"[{', '.join(rule.tags)}] - [{', '.join([str(p) for p in rule.patterns])}] \n"
 
+        print(f"Scanned and queued {len(tasks)} files of total size {common.sizeof_fmt(total_size_to_transfer)} for transfer. ")
         self.logger.info(f"Scanned and queued {len(tasks)} files of total size {common.sizeof_fmt(total_size_to_transfer)} for transfer. "
                          f"Rules: \n {rules_str}")
 
