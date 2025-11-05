@@ -427,7 +427,16 @@ class TargetNotSameSizeOrModifyError(Exception):
     pass
 
 class ChecksumMismatchError(Exception):
-    pass
+    def __init__(self, src_file, trg_file, src_sum, trg_sum):
+        self.src_file = src_file
+        self.trg_file = trg_file
+        self.src_sum = src_sum
+        self.trg_sum = trg_sum
+
+    def __str__(self):
+        base = super().__str__()
+        return f"{base} | Checksum mismatch for {self.src_file} and {self.trg_file}: {self.src_sum} != {self.trg_sum}"
+
 
 class DataAsyncTransferer:
     def __init__(self,
@@ -541,11 +550,13 @@ class DataAsyncTransferer:
         if data_rule.checksum:
             # Find checksum type that both target and source support
             sumtype = next(iter(self.source.supported_checksums().intersection(self.target.supported_checksums())), None)
-            srcsum = await self._submit(self.source.checksum, file, sumtype, priority=order)
-            trgsum = await self._submit(self.target.checksum, data_rule.translate_to_target(file), sumtype, priority=order)
+            src_file = file
+            trg_file = data_rule.translate_to_target(file)
+            srcsum = await self._submit(self.source.checksum, src_file, sumtype, priority=order)
+            trgsum = await self._submit(self.target.checksum, trg_file, sumtype, priority=order)
             # print(f"[{order}] Computed checksums: {srcsum} {trgsum}")
             if srcsum != trgsum:
-                raise ChecksumMismatchError()
+                raise ChecksumMismatchError(src_file, trg_file, srcsum, trgsum)
 
 
         # Delete action, currently, if we fail to del, just continue normally and leave it
