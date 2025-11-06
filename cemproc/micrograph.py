@@ -68,29 +68,48 @@ class MicrographScanner:
     def __iter__(self):
         return self
 
+    def get_filebase(self, path: pathlib.Path):
+        # Remove all suffixes in while loop
+        while path.suffixes:
+            path = path.with_suffix("")
+        return path.name
+
+    def _is_mdoc(self, f):
+        return f.suffix.lower() == ".mdoc"
+
+    def _is_meta(self, f):
+        return self._is_mdoc(f) or f.suffix.lower() == ".xml"
+
     def __next__(self):
         if not self._queue:
             raise StopIteration
 
-        data_file = self._queue.popleft()
+        first_file = self._queue.popleft()
+        current_file_base = self.get_filebase(first_file)
 
-        mdoc_file: pathlib.Path | None = None
+        data_file = first_file if not self._is_meta(first_file) else None
+        mdoc_file = first_file if self._is_mdoc(first_file) else None
 
+        # Iterate until base name changes, capture data and meta files
         while self._queue:
             candidate = self._queue.popleft()
-            suffix = candidate.suffix.lower()
+            candidate_file_base = self.get_filebase(candidate)
 
-            if suffix == ".mdoc":
-                mdoc_file = candidate
-            elif suffix == ".xml":
-                # ignorar xml y seguir buscando
-                continue
-            else:
-                # es otro data_file → devolverlo al iteradorq
+            print("CAND", candidate, candidate_file_base, self._is_meta(candidate), self._is_mdoc(candidate), current_file_base, candidate_file_base)
+            if candidate_file_base != current_file_base:
                 self._queue.appendleft(candidate)
                 break
 
+            if not self._is_meta(candidate) and not data_file:
+                data_file = candidate
+            if self._is_mdoc(candidate) and not mdoc_file:
+                mdoc_file = candidate
+
+
         if mdoc_file is None:
             raise ValueError(f"No .mdoc metadata found for data file {data_file}")
+
+        if data_file is None:
+            raise ValueError(f"No data file found for metadata file {mdoc_file}")
 
         return data_file, mdoc_file
