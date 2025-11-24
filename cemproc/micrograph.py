@@ -62,8 +62,9 @@ class MicrographScanner:
     `.xml` and others are skipped. If a data file has no `.mdoc`
     metadata, a ValueError is raised.
     """
-    def __init__(self, file_paths: Iterable[pathlib.Path]):
+    def __init__(self, file_paths: Iterable[pathlib.Path], allow_no_meta=False):
         self._queue = deque(pathlib.Path(p) for p in file_paths)
+        self.allow_no_meta = allow_no_meta
 
     def __iter__(self):
         return self
@@ -95,7 +96,7 @@ class MicrographScanner:
             candidate = self._queue.popleft()
             candidate_file_base = self.get_filebase(candidate)
 
-            print("CAND", candidate, candidate_file_base, self._is_meta(candidate), self._is_mdoc(candidate), current_file_base, candidate_file_base)
+            # print("CAND", candidate, candidate_file_base, self._is_meta(candidate), self._is_mdoc(candidate), current_file_base, candidate_file_base)
             if candidate_file_base != current_file_base:
                 self._queue.appendleft(candidate)
                 break
@@ -106,7 +107,7 @@ class MicrographScanner:
                 mdoc_file = candidate
 
 
-        if mdoc_file is None:
+        if mdoc_file is None and not self.allow_no_meta:
             raise ValueError(f"No .mdoc metadata found for data file {data_file}")
 
         if data_file is None:

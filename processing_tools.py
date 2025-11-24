@@ -6,6 +6,7 @@ import typing
 import io
 from enum import Enum, IntEnum
 
+from cemproc.micrograph import MicrographScanner
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
@@ -197,17 +198,11 @@ class EmMoviesHandler:
 
         # Get movie file path
         # movie_datarule: experiment.DataRule = self.storage_engine.data_rules.with_tags("movie", "raw").data_rules[0]
-
-        movie_glob = self._movie_glob()
-        first_movie, first_meta = next(movie_glob, None), next(movie_glob, None) # Given subfiles=True, movie metadata should be next to the movie file in the order
-        if not first_movie:
-            return None
-        first_movie = first_movie[0] # Only path component
-
-        if first_meta and first_meta[0].name.startswith(first_movie.stem):
-            first_meta = first_meta[0] # Only path component
-        else:
-            first_meta = None
+        ms = MicrographScanner((x[0] for x in self._movie_glob()), allow_no_meta=True)
+        try:
+            first_movie, first_meta = next(ms)
+        except StopIteration:
+            return None # Not ready yet - no movie files found
 
         self.logger.debug(f"First movie: {first_movie} with meta: {first_meta}")
         
@@ -222,7 +217,7 @@ class EmMoviesHandler:
         else:
             gain_ref = None
 
-        return (first_movie, first_meta, gain_ref)
+        return first_movie, first_meta, gain_ref
     
     def set_importmovie_info(self, workflow: list, processing_source_path: pathlib.Path):
         movies_info = self.find_movie_information()
