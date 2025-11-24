@@ -167,7 +167,7 @@ class EmMoviesHandler:
                 self.storage_engine.get_file(gain_ref, tmp_srcgain)
                 # Convert it
                 converted_gain_path = GainRefConverter(tmp_srcgain, self.imod_config).convert_to_mrc()
-                self.storage_engine.put_file(gain_ref_target, converted_gain_path, condition=TransferCondition.IF_MISSING)
+                self.storage_engine.put_file(gain_ref_target, converted_gain_path)
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Error during gain reference conversion: {e} {e.stderr}")
         return gain_ref_target
