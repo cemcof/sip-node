@@ -142,6 +142,10 @@ class CryosparcReport:
                 data4fig_dict[field] = []
 
             for row in reader:
+                # Skip row if some values are missing
+                all_row_keys_have_values = all(row[key] not in [None, ''] for key in reader.fieldnames)
+                if not all_row_keys_have_values:
+                    continue
                 for key in reader.fieldnames:
                     data4fig_dict[key].append(row[key])
 
