@@ -124,7 +124,7 @@ class CryosparcReport:
 
         # Update the project report file with the count of processed files
         with open(project_report_path, 'a') as oF:
-            oF.write('%d' % int(len(movie_info['name']) + processed_files))
+            oF.write('%d\n' % int(len(movie_info['name']) + processed_files))
 
         # Open the existing CSV file in append mode and write the new data
         with open(csv_file_path, mode='a', newline='') as file:
