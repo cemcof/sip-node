@@ -179,7 +179,9 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         def _check_and_gen_report_helper():
             interval = common.parse_timedelta(cconf.get("report_generation_interval", "00:10:00.0"))
             should_gen = common.elapsed_since(interval, exp_engine.exp.processing.result_document.primary_file_lastmodified, exp_engine.exp.dt_created)
+            print("Report generation check:", should_gen, interval, exp_engine.exp.processing.result_document.primary_file_lastmodified, exp_engine.exp.dt_created)
             if should_gen:
+                print("Generating report...")
                 cw.create_and_submit_report()
 
         def running():
