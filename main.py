@@ -2,6 +2,7 @@ import argparse
 import datetime
 import importlib
 import logging
+import os
 import sys
 import time
 import configuration
@@ -27,8 +28,8 @@ aparser = argparse.ArgumentParser(
 aparser.add_argument("--organization-name", "-o", dest="organization_name", help="An organization this node belongs to.")
 aparser.add_argument("--node-name", "-n", dest="node_name", help="Name of this node. Must be unique among all of the running nodes. Default is the hostname.")
 aparser.add_argument("--config-file", dest="config_file", help="Path to a yaml file that configures this node.")
-aparser.add_argument("--sip-api-url", "-u", dest="sip_api_url", help="Base URL of the LIMS HTTTP API.")
-aparser.add_argument("--sip-api-key", "-s", dest="sip_api_key", help="A key that is used to authorize organization in the LIMS API/")
+aparser.add_argument("--sip-api-url", "-u", dest="sip_api_url", default=os.getenv("SIP_API_URL"), help="Base URL of the LIMS HTTTP API.")
+aparser.add_argument("--sip-api-key", "-s", dest="sip_api_key", default=os.getenv("SIP_API_KEY"), help="A key that is used to authorize organization in the LIMS API/")
 aparser.add_argument("--sip-api-https-proxy", "-p", dest="sip_api_https_proxy", help="A proxy server to be used to communicatet with LIMS API")
 aparser.add_argument("--refresh-interval", "-r", dest="refresh_interval", default=6.0, type=float, help="How often to ping LIMS database, fetch/submit configuration and adjust executed modules accordingly. Default 15sec.")
 aparser.add_argument("-d --debug", dest="debug_mode", action='store_true')
