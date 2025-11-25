@@ -667,7 +667,7 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download")
         return dw_result, errs
     
-    def upload_processed(self, source: pathlib.Path, target: pathlib.Path):
+    def upload_processed(self, source: pathlib.Path, target: str):
         dr = DataRule('**/*.*', "processed", target=target, keep_tree=True, condition=TransferCondition.IF_NEWER)
         up_result, errs = self.upload(source, DataRulesWrapper([dr]), session_name="cs_processed_upload")
         return up_result, errs

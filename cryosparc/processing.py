@@ -173,7 +173,11 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         cw = CryosparcWrapper(exp_engine, cconf, processing_tools.EmMoviesHandler(exp_engine, iconf))
 
         def _filter_relevant_upload_results(up_result: list):
-            up_result = [f for f in up_result if not (".log" in str(f[0]) or "workspaces.json" in str(f[0]))]
+            no_log = lambda x: not (".log" in str(x))
+            no_workspaces = lambda x: not ("workspaces.json" in str(x))
+            no_report = lambda x: not ("spa_report" in str(x))
+
+            up_result = [f for f in up_result if no_log(f[0]) and no_workspaces(f[0]) and no_report(f[0])]
             return up_result
         
         def _check_and_gen_report_helper():
