@@ -219,8 +219,8 @@ class IrodsExperimentStorageEngine(experiment.ExperimentStorageEngine):
     
     def put_file(self, path_relative: pathlib.Path, src_file: pathlib.Path, condition: TransferCondition = TransferCondition.IF_MISSING):
         if self.fs_underlying_storage:
-            return self.fs_underlying_storage.put_file(path_relative, src_file, condition)
-        return self.irods_collection.ensure_file(src_file, path_relative, replace=condition != TransferCondition.IF_MISSING)
+            return self.fs_underlying_storage.put_file(path_relative, src_file)
+        return self.irods_collection.ensure_file(src_file, path_relative, replace=True)
         
     def get_file(self, path_relative_src: pathlib.Path, path_dst: pathlib.Path):
         if self.fs_underlying_storage:
