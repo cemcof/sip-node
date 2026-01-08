@@ -732,10 +732,8 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
     def __init__(self, name, logger, lims_logger, config: configuration.LimsModuleConfigWrapper, api_session, exp_storage_engine_factory):
         super().__init__(name, logger, lims_logger, config, api_session)
         self.exp_storage_engine_factory = exp_storage_engine_factory
-        self.exec_state = {}
-        self.state_lock = threading.Lock()
-        self.executor = None if not self.is_parallel else ThreadPoolExecutor(max_workers=self.parallel, thread_name_prefix=name)
-        self._finalizer = None if not self.is_parallel else weakref.finalize(self, self.executor.shutdown, wait=False)
+        # create runner according to parallel configuration
+        self.runner = ParallelRunner(self.parallel, name, self.logger) if self.is_parallel else SequentialRunner(self.logger)
 
     def _get_experiment_storage_engine(self, e: ExperimentWrapper):
         exp_logger = logger_db_api.experiment_logger_adapter(self._lims_logger, e.id)
@@ -754,33 +752,8 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
     
     def step(self):
         experiments = self.provide_experiments()
-
-        def step_exp_helper(e_engine):
-            try:
-                self.step_experiment(e_engine)
-            except Exception as e:
-                self.logger.exception(e)
-            finally:
-                with self.state_lock:
-                    self.exec_state.pop(e_engine.exp.id, None)
-
-        def wrap_step_parallel(e_engine):
-            with self.state_lock:
-                if e_engine.exp.id not in self.exec_state:
-                    self.exec_state[e_engine.exp.id] = self.executor.submit(step_exp_helper, e_engine)
-
-        for e in experiments:
-            try:
-                exp_engine = self._get_experiment_storage_engine(e)
-            except Exception as e:
-                self.logger.error("Could not create storage engine for experiment, skipping")
-                self.logger.exception(e)
-                continue
-            
-            if self.is_parallel:
-                wrap_step_parallel(exp_engine)
-            else:
-                step_exp_helper(exp_engine)
+        # delegate execution to selected runner
+        self.runner.step(experiments, self._get_experiment_storage_engine, self.step_experiment)
                 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         pass
@@ -829,4 +802,57 @@ class ExpFileBrowser(configuration.LimsNodeModule):
 
         drives = [d for d in inst_drives]
         return drives
+
+class ExperimentRunnerBase:
+    def step(self, experiments, create_engine, step_experiment):
+        raise NotImplementedError()
+
+class SequentialRunner(ExperimentRunnerBase):
+    def __init__(self, logger):
+        self.logger = logger
+
+    def step(self, experiments, create_engine, step_experiment):
+        for e in experiments:
+            try:
+                exp_engine = create_engine(e)
+            except Exception as exc:
+                self.logger.error("Could not create storage engine for experiment, skipping")
+                self.logger.exception(exc)
+                continue
+
+            try:
+                step_experiment(exp_engine)
+            except Exception as exc:
+                self.logger.exception(exc)
+
+class ParallelRunner(ExperimentRunnerBase):
+    def __init__(self, max_workers, name, logger):
+        self.logger = logger
+        self.exec_state = {}
+        self.state_lock = threading.Lock()
+        self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=name)
+        self._finalizer = weakref.finalize(self, self.executor.shutdown, wait=False)
+
+    def step(self, experiments, create_engine, step_experiment):
+        def step_exp_helper(e_engine):
+            try:
+                step_experiment(e_engine)
+            except Exception as exc:
+                self.logger.exception(exc)
+            finally:
+                with self.state_lock:
+                    self.exec_state.pop(e_engine.exp.id, None)
+
+        for e in experiments:
+            try:
+                exp_engine = create_engine(e)
+            except Exception as exc:
+                self.logger.error("Could not create storage engine for experiment, skipping")
+                self.logger.exception(exc)
+                continue
+
+            with self.state_lock:
+                if exp_engine.exp.id not in self.exec_state:
+                    # submit and track
+                    self.exec_state[exp_engine.exp.id] = self.executor.submit(step_exp_helper, exp_engine)
 
