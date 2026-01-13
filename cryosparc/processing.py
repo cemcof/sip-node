@@ -136,7 +136,6 @@ class CryosparcWrapper(StateObj):
 
         self._invoke_cryosparc_cli("stop", args, stdin="")
         self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
-        self.exp.processing.state = ProcessingState.FINALIZING
 
     def create_and_submit_report(self):
         report = CryosparcReport(self.project_path)
@@ -191,16 +190,11 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
         def running():
             # Fetch new data from storage -> processing project
             dw_result, errs = exp_engine.download_raw(cw.raw_data_dir)
-
-            # Return new data from processing project -> storage
-            up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
-            up_result = _filter_relevant_upload_results(up_result)
             _check_and_gen_report_helper()
 
             # Check if the processing is done
-            # Some log files can change even though nothing reasonable is happening, ignore them
             now_utc = datetime.datetime.now(datetime.timezone.utc)
-            if up_result or not exp_engine.exp.processing.last_update:
+            if dw_result or not exp_engine.exp.processing.last_update:
                 # Update last processing change time 
                 exp_engine.exp.processing.last_update = now_utc
 
@@ -214,7 +208,8 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
                 exp_engine.exp.processing.last_update = now_utc
                 exp_engine.exp.processing.state = ProcessingState.STOP_REQUESTED
 
-        def finalizing():
+        def _uploading(on_finish):
+            """ Should return processed data to storage """
             up_result, errs = exp_engine.upload_processed(cw.project_path, cw.project_path.name)
             up_result = _filter_relevant_upload_results(up_result)
             print("FIn UP", up_result)
@@ -226,18 +221,30 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
             change_delta = now_utc - exp_engine.exp.processing.last_update
             print("FIN Check", str(now_utc), timeout_delta.seconds, change_delta.seconds,  exp_engine.exp.processing.last_update)
             if timeout_delta < change_delta:
-                cw.create_and_submit_report()
-                exp_engine.exp.processing.state = ProcessingState.COMPLETED
+                on_finish()
             else:
                 _check_and_gen_report_helper()
+
+        def uploading():
+            def stop_cryosparc():
+                cw.stop_project()
+                exp_engine.exp.processing.state = ProcessingState.FINALIZING
+
+            _uploading(stop_cryosparc)
+
+        def final_uploading():
+            def finish():
+                cw.create_and_submit_report()
+                exp_engine.exp.processing.state = ProcessingState.COMPLETED
+            _uploading(finish)
 
         exec_state(cw,
             {
                 ProcessingState.UNINITIALIZED: cw.create_project,
                 ProcessingState.READY: cw.run_project,
                 ProcessingState.RUNNING: running,
-                ProcessingState.STOP_REQUESTED: cw.stop_project,
-                ProcessingState.FINALIZING: finalizing,
+                ProcessingState.STOP_REQUESTED: uploading,
+                ProcessingState.FINALIZING: final_uploading,
                 ProcessingState.COMPLETED: lambda: None,
                 ProcessingState.DISABLED: lambda: None,
             }
