@@ -572,7 +572,7 @@ class DataAsyncTransferer:
         return TransferResult(file, data_rule, time.time() - initial_time, transfer_time, initial_size, initial_modify,
                               checksum=data_rule.checksum)
 
-    async def transfer_all(self):
+    async def transfer_all(self, timeout: float = None):
         consumation_start = time.time()
         meta = self._load_metafile() or {}
         errors = []
@@ -615,7 +615,7 @@ class DataAsyncTransferer:
             tasks.append(tsk)
             total_size_to_transfer += size
 
-        # Log what we scanned and queued
+        # Log what we scanned and queued 2823560
         rules_str = ""
         for rule in self.data_rules:
             rules_str += f"[{', '.join(rule.tags)}] - [{', '.join([str(p) for p in rule.patterns])}] \n"
@@ -625,6 +625,7 @@ class DataAsyncTransferer:
                          f"Rules: \n {rules_str}")
 
         # Now, wait for the transfer tasks and react to their result
+        transfer_start = time.time()
         consecutive_errors = 0
         for tsk in asyncio.as_completed(tasks):
             try:
@@ -637,6 +638,10 @@ class DataAsyncTransferer:
                     message += f", checksum validated"
                 self.logger.info(message)
                 consecutive_errors = 0
+                if timeout and (time.time() - transfer_start) > timeout:
+                    self.logger.info("Timeout hit, transfer remaining in next round")
+                    break
+                
             except Exception as e:
                 self.logger.error("File transfer failed: " + str(e))
                 traceback.print_exc()
@@ -662,13 +667,13 @@ class DataAsyncTransferer:
         self.executor.shutdown(cancel_futures=True)
         self.executor = None
 
-    def transfer(self, until: threading.Event=None):
+    def transfer(self, timeout: float = None):
         self.ev_loop = asyncio.new_event_loop()
         self.executor = common.PriorityThreadPoolExecutor(max_workers=1, thread_name_prefix=f"transfer_{self.identifier}")
         asyncio.set_event_loop(self.ev_loop)
         # Bad transfer config (no files selected) - new one has been launched
         try:
-            result = self.ev_loop.run_until_complete(self.transfer_all())
+            result = self.ev_loop.run_until_complete(self.transfer_all(timeout))
         finally:
             self.stop()
 
