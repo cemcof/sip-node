@@ -1,3 +1,5 @@
+import tempfile
+
 import experiment
 from experiment import Operations
 import jsonschema, json
@@ -35,7 +37,7 @@ def imageset_info(em_handler: EmMoviesHandler):
         return "('T1', '')" if mov_meta.frame_count > 1 else "('T2', '')"
 
     return {
-        "directory": "data/micrographs", # TODO - this actually folder name?
+        "directory": "data/Movies", # TODO - this actually folder name?
         "category": category_selector(),
         "header_format": format_map[mov_meta.movie_format],
         "data_format": format_map[mov_meta.movie_format],
@@ -116,13 +118,41 @@ class EmdbEmpiarPublicationService(experiment.ExperimentModuleBase):
         # exp_engine.data_rules.
         metadata = exp_engine.read_metadata()
         em_handler = EmMoviesHandler(exp_engine)
+        publication_info = exp_engine.exp.publications.publication("empiar-emdb")
+        json_tmp_input = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
 
         try:
             imgset_info = imageset_info(em_handler)
             deposit = build_empiar_deposition_data(metadata, imgset_info, exp_engine.exp.publications.publication("empiar-emdb"))
+            # TODO - dump to json_tmp_input
             print(f"We have experiment empiar deposit json! {exp_engine.exp.secondary_id} \n{deposit}")
+
+            # Now prepare empiar depositor for deposition and globus transfer submission
+            data = None # Path to directory with data to deposit
+            globus_data = {
+                'is_dir': '-r',
+                'obj_name': None # TODO is last path part of data path, or more like experiment sec id
+            }
+
+            depositor = empiar_depositor.empiar_depositor.EmpiarDepositor(
+                empiar_token=self.module_config["empiar_api_token"], # Obtained from empiar website
+                json_input=json_tmp_input.name, # TODO - this expects file path,
+                data=data,
+                globus_data=globus_data,
+                globus=self.module_config["globus_source_endpoint_id"], # TODO - globus endpoint id
+
+                # Entry information is obtained and set automatically after deposit submission
+                # It is needed only for redeposition
+                entry_id = None,
+                entry_directory=None
+
+
+            )
+            depositor.deposit_data()
+
         except Exception as e:
             print(e)
             pass
-
+        finally:
+            json_tmp_input.close() # TODO remove file
         pass
