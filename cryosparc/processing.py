@@ -189,7 +189,7 @@ class CryosparcProcessingHandler(ExperimentModuleBase):
 
         def running():
             # Fetch new data from storage -> processing project
-            dw_result, errs = exp_engine.download_raw(cw.raw_data_dir)
+            dw_result, errs = exp_engine.download_raw(cw.raw_data_dir, timeout=60*5) # Download for 5 minutes (chunk), so we can improve liveness
             _check_and_gen_report_helper()
 
             # Check if the processing is done

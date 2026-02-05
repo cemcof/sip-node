@@ -630,18 +630,18 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         raw_rules = self.exp.data_source.get_combined_raw_datarules(raw_rules)
         return self.upload(source_path, raw_rules, session_name="raw")
 
-    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None):
+    def upload(self, source: pathlib.Path, rules: configuration.DataRulesWrapper, session_name=None, timeout=None):
 
         transferer = DataAsyncTransferer(data_tools.FsTransferSource(source), self, rules,
                                          f"{session_name}_{self.exp.secondary_id}_{int(self.exp.dt_created.timestamp())}",
                                          self.logger)
-        result = transferer.transfer()
+        result = transferer.transfer(timeout=timeout)
         return result
 
-    def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None):
+    def download(self, target: pathlib.Path, data_rules: configuration.DataRulesWrapper = None, session_name=None, timeout=None):
         data_rules = data_rules or self.data_rules
         transferer = DataAsyncTransferer(self, data_tools.FsTransferSource(target), data_rules, f"{session_name}_{self.exp.secondary_id}")
-        return transferer.transfer()
+        return transferer.transfer(timeout=timeout)
 
     def transfer_to(self, target: 'ExperimentStorageEngine', data_rules: configuration.DataRulesWrapper=None, session_name=None, transfer_action: TransferAction=TransferAction.COPY):
         """ Transfer data from this storage to another """
@@ -662,9 +662,9 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         sniffer = DataRulesSniffer(source_path, meta_rules, sniff_consumer, None, min_nochange_sec=0)
         sniffer.sniff_and_consume()
 
-    def download_raw(self, target: pathlib.Path):
+    def download_raw(self, target: pathlib.Path, timeout=None):
         dr = DataRule('Raw/**/*.*', "raw", keep_tree=True, checksum=False)
-        dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download")
+        dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download", timeout=timeout)
         return dw_result, errs
     
     def upload_processed(self, source: pathlib.Path, target: str):
