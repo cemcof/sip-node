@@ -51,8 +51,6 @@ class CryosparcEngine:
 
         self.api.sessions.update_exposure_group(project_uid, session_uid, 1, exposure_group_update)
 
-        # Some presets 
-        workflow["mscope_params"]["gainref_flip_y"] = "tif" in workflow["exposure"]["file_engine_filter"]
         # Del exposure
         del workflow["exposure"]
         
