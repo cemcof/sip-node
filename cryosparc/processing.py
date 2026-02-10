@@ -22,10 +22,9 @@ class CryosparcWrapper(StateObj):
         self.exp_engine = exp_engine
         self.exp = exp_engine.exp
         self.config = config
-        self.python_exec = config.get("python_exec", "python3")
         self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc/cli.py")
         self.cm_path = config["cm_path"]
-
+        self.cryosparc_env_provider = common.FromShellEnvironmentSetup([self.cm_path, "env"])
         target_loc = self.exp_engine.resolve_target_location()
         # Pokracovat tady - zadny processed target rule neni
         self.projects_dir = target_loc if target_loc else pathlib.Path(config["projects_dir"])
@@ -39,14 +38,16 @@ class CryosparcWrapper(StateObj):
         self.em_handler = em_tools
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
-        args = [self.python_exec, self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
+        # Obtain correct environment
+        env = self.cryosparc_env_provider()
+        args = ["python", self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
         for key, value in args_extra.items():
             args.append(key)
             args.append(value)
             
         self.exp_engine.logger.info(f"Invoking cryosparc engine: {' '.join(args)}")
         try:
-            pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True)
+            pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True, env=env)
         except subprocess.CalledProcessError as e:
             print("ERRR")
             print(e.stdout, e.stderr)

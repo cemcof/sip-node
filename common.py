@@ -1,6 +1,7 @@
 import logging
 import math
 import re
+import shlex
 import time
 import pathlib
 import threading
@@ -283,6 +284,27 @@ class IEnvironmentSetup:
     """ Sets up environment for execution of external tools """
     def __call__(self, *args, **kwargs) -> dict:
         raise NotImplementedError()
+
+class FromShellEnvironmentSetup(IEnvironmentSetup):
+    def __init__(self, command_with_args: list):
+        self.command_provider = command_with_args
+
+    def __call__(self, *args, **kwargs):
+        env_proc = subprocess.run(self.command_provider, capture_output=True, text=True,
+                             check=True)
+
+        pattern = re.compile(r'^export\s+([^=]+)=(.*)$')
+
+        env = {}
+        for line in env_proc.stdout.splitlines():
+            m = pattern.match(line.strip())
+            if not m:
+                continue
+
+            key, value = m.groups()
+            env[key] = shlex.split(value)[0] if value else ""
+
+        return env
 
 class LmodEnvProvider(IEnvironmentSetup):
     def __init__(self, lmod_path, *modules) -> None:
