@@ -51,24 +51,16 @@ class CryosparcEngine:
 
         self.api.sessions.update_exposure_group(project_uid, session_uid, 1, exposure_group_update)
 
-        # Del exposure
+        # Del exposure, only update session params
         del workflow["exposure"]
-        
-        # Flatten workflow params for v5 API
-        updated_params = {}
-        for sec, params in workflow.items():
-            for key, value in params.items():
-                # In v5, parameters are flattened
-                updated_params[key] = value
-
-        self.api.sessions.update_session_params(project_uid, session_uid, updated_params)
+        self.api.sessions.update_session_params(project_uid, session_uid, workflow)
 
     def create_project(self, project_path: pathlib.Path, workflow):
         project_container_dir, project_dir, project_name = project_path.parent, project_path, str(project_path.name)
 
         # Create project using new v5 API
-        project = self.api.projects.create(str(project_container_dir), project_name)
-        project_uid = project.project_uid
+        project = self.api.projects.create(parent_dir=str(project_container_dir), title=project_name)
+        project_uid = project.uid
 
         # Create a new Live session using new v5 API
         session = self.api.sessions.create(project_uid, title=f"{project_name} Live Session")
@@ -155,14 +147,14 @@ if __name__ == "__main__":
         wf.close()
 
     # Should we prepare environment?
-    if parsed_main.get("cm"):
+    if parsed_main["cm"]:
         env = get_cryosparc_env(parsed_main["cm"])
-        del parsed_main["cm"]
         for key, value in env.items():
             os.environ[key] = value
             # Need to set python path explicityl
             if key == "PYTHONPATH":
                 sys.path.append(value)
+    del parsed_main["cm"]
 
     # Cluster given?
     compute_configuration = {}

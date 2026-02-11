@@ -77,6 +77,7 @@ class CryosparcWrapper(StateObj):
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
+            "file_engine_enable": True
         }
 
         # Gain ref 
