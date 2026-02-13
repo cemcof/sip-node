@@ -307,7 +307,7 @@ class DataRulesSniffer:
                     # Consumation succeeded, mark this file consumed
                     meta[str(f)] = now
                     if metafile_append:
-                        metafile_append.write(f"{str(f)}: {now}\n")
+                        metafile_append.write(f"{str(f)}: {now}\n") # Bug - escape string for yaml
                         metafile_append.flush()
                 except Exception as e:
                     errors.append((f, e))
@@ -583,7 +583,7 @@ class DataAsyncTransferer:
             meta[str(file)] = mod
             successes.append((file, mod))  # TODO what?
             if metafile_append:
-                metafile_append.write(f"{str(file)}: {mod}\n")
+                yaml.safe_dump({ str(file): mod }, metafile_append, default_flow_style=False)
                 metafile_append.flush()
 
         tasks = []
