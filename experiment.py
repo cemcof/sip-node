@@ -663,7 +663,7 @@ class ExperimentStorageEngine(data_tools.DataTransferSource):
         sniffer.sniff_and_consume()
 
     def download_raw(self, target: pathlib.Path, timeout=None):
-        dr = DataRule('Raw/**/*.*', "raw", keep_tree=True, checksum=False)
+        dr = DataRule('Raw*/*.*', "raw", keep_tree=True, checksum=False)
         dw_result, errs = self.download(target, DataRulesWrapper([dr]), session_name="cs_raw_download", timeout=timeout)
         return dw_result, errs
     

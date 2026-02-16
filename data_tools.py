@@ -59,26 +59,36 @@ class FnMatchPattern(PathPattern):
 
     def __init__(self, filename: str, dirname: typing.Union[str, pathlib.Path] = None):
         super().__init__(filename, dirname)
-        if dirname == self.ANY_DIR:
-            self._combined = str(dirname) + "/" + filename
-        else:
-            self._combined = filename
+        self._combined = self.filename if not dirname else str(dirname) + "/" + filename
+        self.is_any_dir = str(dirname) == self.ANY_DIR
+        self.match_file_only = self.is_any_dir
+        self.is_not_in_dir = dirname is None
 
     def with_dir(self, new_dir: pathlib.Path):
         return FnMatchPattern(self.filename, new_dir)
 
+    def is_any_dir(self):
+        return str(self.dirname) == self.ANY_DIR
+
     def match(self, path: pathlib.Path):
-        res = fnmatch(str(path), self._combined)
-        if not res and self.dirname == self.ANY_DIR:
+        if self.match_file_only:
             # Also include matching just filename itself, without directory (without /)
-            return fnmatch(path.name, self.filename)
-        return res
+            return fnmatch(path.name.lower(), self.filename.lower())
+        elif self.is_not_in_dir:
+            return self._no_dir_match(path)
+        else:
+            return fnmatch(str(path).lower(), self._combined.lower())
+
+    def _no_dir_match(self, path: pathlib.Path):
+        if len(path.parts) == 1:
+            return fnmatch(str(path).lower(), self.filename.lower())
+        return False
 
     @staticmethod
     def parse(pattern: str):
         pth = pathlib.Path(pattern)
 
-        return FnMatchPattern(pth.name, pth.parent)
+        return FnMatchPattern(pth.name, pth.parent if len(pth.parts) > 1 else None)
 
 class RegexPattern(PathPattern):
     @staticmethod
