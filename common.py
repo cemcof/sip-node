@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -330,6 +331,36 @@ class DictArgWrapper:
                 return d[key]
         return default
 
+class JsonFileState:
+    def __init__(self, path: pathlib.Path, state_name_key="state"):
+        self.path = path
+        self.state_name_key = state_name_key
+
+    def load(self, *states_clss):
+        if not self.path.exists():
+            return self.default_state
+
+        try:
+            with open(self.path, "r") as f:
+                data = json.load(f)
+                state_name = data.get(self.state_name_key, None)
+                del data[self.state_name_key]
+                if state_name is None:
+                    logging.error(f"State name key {self.state_name_key} not found in state file {self.path}")
+                    return self.default_state
+                state_cls = next(filter(lambda c: c.__name__ == state_name, states_clss))
+                return state_cls(**data)
+        except Exception as e:
+            logging.error(f"Error loading state from {self.path}", exc_info=e)
+            return self.default_state
+
+    def persist(self, state):
+        try:
+            with open(self.path, "w") as f:
+                data = { **state.get_data(), self.state_name_key: state.__class__.__name__ }
+                json.dump(data, f)
+        except Exception as e:
+            logging.error(f"Error saving state to {self.path}", exc_info=e)
 
 
 """ Priority queue executor """

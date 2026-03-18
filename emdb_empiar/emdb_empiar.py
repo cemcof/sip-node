@@ -1,5 +1,8 @@
 import tempfile
 
+import pathlib
+
+import common
 import experiment
 from experiment import Operations
 import jsonschema, json
@@ -101,6 +104,18 @@ def build_empiar_deposition_data(metadata, imageset, publication: experiment.Exp
 
     return empiar_deposition
 
+class EmpiarDepositionState:
+    pass
+
+class StateDeposit(EmpiarDepositionState):
+    pass
+
+class StateUpload(EmpiarDepositionState):
+    pass
+
+class StateUploading(EmpiarDepositionState):
+    pass
+
 class EmdbEmpiarPublicationService(experiment.ExperimentModuleBase):
 
     def provide_experiments(self):
@@ -113,6 +128,16 @@ class EmdbEmpiarPublicationService(experiment.ExperimentModuleBase):
                 .get_experiments_by_operation_states(valid_states))
 
         return filter(lambda e: e.publications.publication("empiar-emdb"), exps)
+
+    def load_state(self, exp_id):
+        data_store_path = pathlib.Path(self.module_config["storage_path"])
+        state_file = common.JsonFileState(data_store_path / f"{exp_id}_empiar_deposition_state.json")
+        state_file.load(StateDeposit, StateUpload, StateUploading)
+
+    def persist_state(self, exp_id, state: EmpiarDepositionState):
+        data_store_path = pathlib.Path(self.module_config["storage_path"])
+        state_file = common.JsonFileState(data_store_path / f"{exp_id}_empiar_deposition_state.json")
+        state_file.persist(state)
 
     def step_experiment(self, exp_engine: experiment.ExperimentStorageEngine):
         # exp_engine.data_rules.
