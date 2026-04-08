@@ -11,3 +11,4 @@ matplotlib
 reportlab
 jsonschema
 imagecodecs
+Pillow

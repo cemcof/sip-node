@@ -10,6 +10,7 @@ from cemproc.micrograph import MicrographScanner
 from common import lmod_getenv
 import functools, subprocess
 import tempfile, tifffile, mrcfile, numpy as np, os
+from PIL import Image
 from data_tools import DataRulesWrapper, DataRule, TransferCondition
 
 class VoxelType(IntEnum):
@@ -182,6 +183,51 @@ class EmMoviesHandler:
     def count_movies(self):
         movie_glob = self._movie_glob(with_meta=False)
         return sum(1 for _ in movie_glob)
+
+    @staticmethod
+    def _normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
+        arr = np.asarray(arr)
+        if arr.ndim >= 3:
+            arr = arr[0]
+        if arr.ndim == 3:
+            arr = arr[..., 0]
+
+        arr = arr.astype(np.float32)
+        p_low, p_high = np.percentile(arr, [1.0, 99.0])
+        if p_high <= p_low:
+            p_low, p_high = float(arr.min()), float(arr.max())
+        if p_high <= p_low:
+            return np.zeros_like(arr, dtype=np.uint8)
+
+        scaled = (arr - p_low) / (p_high - p_low)
+        scaled = np.clip(scaled, 0.0, 1.0)
+        return (scaled * 255).astype(np.uint8)
+
+    @staticmethod
+    def _read_movie_array(src_movie: pathlib.Path, suffix: str):
+        if suffix in (".mrc", ".mrcs"):
+            with mrcfile.open(src_movie, permissive=True) as mrc:
+                return mrc.data
+        if suffix in (".tif", ".tiff", ".eer"):
+            return tifffile.imread(src_movie)
+        raise ValueError(f"Unsupported movie format for thumbnail generation: {suffix}")
+
+    def build_thumbnail(self, target_file: pathlib.Path, size=(512, 512), fmt="PNG"):
+        movie_info = self.find_movie_information()
+        if not movie_info:
+            raise ValueError("No movie files found for thumbnail generation")
+
+        movie_rel, _meta_rel, _gain = movie_info
+
+        with tempfile.TemporaryDirectory() as td:
+            src_movie = pathlib.Path(td) / movie_rel.name
+            self.storage_engine.get_file(movie_rel, src_movie)
+            movie_data = self._read_movie_array(src_movie, movie_rel.suffix.lower())
+
+            img_arr = self._normalize_to_uint8(movie_data)
+            image = Image.fromarray(img_arr, mode="L")
+            image.thumbnail(size)
+            image.save(target_file, format=fmt)
 
     def movie_metadata(self, mov_path: pathlib.Path, mov_met_path) -> MovieMetadata:
         if mov_met_path.suffix == ".mdoc":

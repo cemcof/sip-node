@@ -568,10 +568,8 @@ class GlobusHelper:
                 message="endpoint_id not set after search")
         self.validate_path_access(endpoint_path)
 
-    def globus_upload(self, destination_directory, destination_endpoint_id, entry_reference):
-        """
-        Initializes the data transfer task to the EMPIAR destination.
-        """
+    def globus_upload_submit(self, destination_directory, destination_endpoint_id, entry_reference):
+        """Initialize a Globus transfer task and return its task id."""
         step = "globus.transfer"
         self.log.info("Initiating the Globus transfer...\n")
         dest_path = os.path.join('/', destination_directory, 'data', self.obj_name)
@@ -601,7 +599,7 @@ class GlobusHelper:
         _ensure(bool(task_id), code="E_GLOBUS_TASK_ID", step=step, message="Could not parse Globus task id from output",
                 detail=txt[:1200])
         self.log.info(f"Successfully fetched Globus transfer task ID: {task_id}")
-        self.globus_upload_wait(task_id)
+        return task_id
 
     def globus_upload_wait(self, task_id):
         """
@@ -626,6 +624,11 @@ class GlobusHelper:
                            detail=(out_tr_wait + b"\n" + err_tr_wait).decode("utf-8", "replace")[:1200])
 
         self.log.info(f"Globus Task {task_id} completed successfully.")
+
+    def globus_upload(self, destination_directory, destination_endpoint_id, entry_reference):
+        """Compatibility wrapper: submit upload task and wait for completion."""
+        task_id = self.globus_upload_submit(destination_directory, destination_endpoint_id, entry_reference)
+        self.globus_upload_wait(task_id)
 
 
 def main():
