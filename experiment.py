@@ -760,7 +760,7 @@ class ExperimentModuleBase(configuration.LimsNodeModule):
     def step(self):
         experiments = self.provide_experiments()
         # delegate execution to selected runner
-        self.runner.step(self._experiments_to_their_engines(experiments), self.step_experiment)
+        self.runner.step(self._experiments_to_their_engines(experiments), self.step_experiment, self.name)
                 
     def step_experiment(self, exp_engine: ExperimentStorageEngine):
         pass
@@ -811,7 +811,7 @@ class ExpFileBrowser(configuration.LimsNodeModule):
         return drives
 
 class ExperimentRunnerBase:
-    def step(self, experiments, step_experiment):
+    def step(self, experiments, step_experiment, name):
         raise NotImplementedError()
     
     def _experiment_engine_iterator(self, experiments, create_engine):
@@ -828,7 +828,7 @@ class SequentialRunner(ExperimentRunnerBase):
     def __init__(self, logger):
         self.logger = logger
 
-    def step(self, experiments, step_experiment):
+    def step(self, experiments, step_experiment, name):
         for exp_engine in experiments:
             try:
                 step_experiment(exp_engine)
@@ -849,8 +849,9 @@ class ParallelRunner(ExperimentRunnerBase):
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=name)
         self._finalizer = weakref.finalize(self, self.executor.shutdown, wait=False)
 
-    def step(self, experiments, step_experiment):
+    def step(self, experiments, step_experiment, name):
         def step_exp_helper(e_engine):
+            self.logger.info(f"{e_engine.exp.secondary_id} / {name} parallel exp step")
             try:
                 step_experiment(e_engine)
             except Exception as exc:
