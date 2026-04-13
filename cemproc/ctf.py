@@ -104,12 +104,13 @@ class CtfFind5:
         command_input = "\n".join(params) + "\n"
 
         out_info = mrc_pw.parent / f"{mrc_pw.stem}.txt"
-        if not ( skip_if_results_exist and out_info.exists() and out_info.stat().st_size > 0 and mrc_pw.exists() and mrc_pw.stat().st_size > 0 ):
+        skip = ( skip_if_results_exist and out_info.exists() and out_info.stat().st_size > 0 and mrc_pw.exists() and mrc_pw.stat().st_size > 0 )
+        if not skip:
             result = subprocess.run(self.executable, shell=True, input=command_input, capture_output=True, text=True, env=self.exec_env)
             if result.returncode != 0:
                 raise RuntimeError(f"Failed ctffind {result.returncode} \n IN {command_input} \n ERR: {result.stderr} \n OUT: {result.stdout}")
 
-        return CtfResult(mrc_pw, out_info)
+        return CtfResult(mrc_pw, out_info), skip
         # Attempt to move output file
         # try:
         #     dw_file = mrc_mic.with_name(f"{mrc_mic.stem}_DW.mrc")
