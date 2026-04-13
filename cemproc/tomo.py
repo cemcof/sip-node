@@ -201,7 +201,8 @@ class CemcofTomoWorkflow:
                     self.logger.warning(f"Skipping {data}")
                     continue
                 except Exception as e:
-                    self.logger.error(f"Failed to process {data}", exc_info=e)
+                    self.logger.error(f"FATAL, Failed to process {data}", exc_info=e)
+                    raise
         except StopIteration:
             # If no new data will arrive, process last tilt series
             if no_new_mics_expected:
