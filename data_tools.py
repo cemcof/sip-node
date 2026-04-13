@@ -457,13 +457,17 @@ class DataAsyncTransferer:
                  logger: logging.Logger=None,
                  on_start = None,
                  on_finish = None,
-                 on_file_done = None):
+                 on_file_done = None,
+                 app_data_dir = None):
         self.source = source
         self.target = target
         self.data_rules = data_rules
         self.identifier = identifier
         self.logger = logger or logging.getLogger("sniff")
-        self.metafile = pathlib.Path(tempfile.gettempdir()) / f"_sniff_{identifier}.yml"
+        self.app_data_dir = app_data_dir or pathlib.Path.home() / ".sip"
+        if not self.app_data_dir.exists():
+            self.app_data_dir.mkdir(parents=True)
+        self.metafile = self.app_data_dir / f"_sniff_{identifier}.yml"
         self.on_start = on_start or (lambda: None)
         self.on_finish = on_finish or (lambda: None)
         self.on_file_done = on_file_done or (lambda: None)
