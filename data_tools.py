@@ -479,7 +479,7 @@ class DataAsyncTransferer:
         return None
 
     def should_exclude(self, path: pathlib.Path):
-        return path.name.startswith("_")
+        return path.name.startswith("_") or path.name.endswith("~")
 
     def _submit(self, fn, *args, **kwargs):
         future = self.executor.submit(fn, *args, **kwargs)
@@ -549,8 +549,7 @@ class DataAsyncTransferer:
         transfer_time = await self._submit(strategy, file, data_rule, priority=order)
 
         took_time = time.time() - stime
-        print(f"[{order}] Finished transfer, time: {transfer_time:.3f}, took: {took_time:.3f}")
-        
+
         # Transfer done, now before checksum, check if size/modify changed, in that case fail and start again
         if self.source.stat(file) != (initial_modify, initial_size):
             print(f"[{order}] File size/modify changed, aborting transfer: {file}, {initial_modify}, {initial_size}, {self.source.stat(file)}")
