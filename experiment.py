@@ -265,7 +265,7 @@ class ExperimentDataSourceWrapper:
     
     def get_combined_raw_datarules(self, raw_rules, keep_source_files=False):
         trans_action = TransferAction.MOVE if not keep_source_files else TransferAction.COPY
-        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, action=trans_action, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
+        raw_rules = DataRulesWrapper(raw_rules.data_rules + [DataRule(p, ["raw"], ".", True, subfiles=False, action=trans_action, condition=TransferCondition.IF_MISSING) for p in self.source_patterns])
         # If keeping files on the instrument is requested, use copy action on all, otherwise leave default configured values
         if self.keep_source_files:
             for r in raw_rules:
