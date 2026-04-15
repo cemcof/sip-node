@@ -6,12 +6,13 @@ import subprocess
 from common import LmodEnvProvider
 
 class MotionCorr3:
-    def __init__(self, out_dir: pathlib.Path, voltage, apix, pre_dose, frame_dose, gpu_id, lmod: LmodEnvProvider, gain_file: pathlib.Path=None, executable: str ='MotionCor3'):
+    def __init__(self, out_dir: pathlib.Path, voltage, apix, pre_dose, frame_dose, gpus, lmod: LmodEnvProvider, use_gpus: int = 2, gain_file: pathlib.Path=None, executable: str ='MotionCor3'):
         self.voltage = voltage
         self.apix = apix
         self.pre_dose = pre_dose
         self.frame_dose = frame_dose
-        self.gpu_id = gpu_id
+        self.gpus = gpus
+        self.use_gpus = use_gpus
         self.gain_file = gain_file
         self.exec_env = lmod()
         self.exec = executable
@@ -27,12 +28,13 @@ class MotionCorr3:
             ".tif": f"-InTiff {in_micrograph}",
             ".eer": f"-InEer {in_micrograph}"
         }
-
         input_part = tmap.get(in_micrograph.suffix, None)
         if not input_part:
             raise ValueError(f"Unsupported motioncor input file type: {in_micrograph}")
 
-        return f"{self.exec} {input_part} -OutMrc {out_micrograph} -kV {self.voltage} -Iter 3 -Bft 150 {self._get_gain_command_part(in_micrograph)} -PixSize {self.apix} -Gpu {self.gpu_id}"
+        return (f"{self.exec} {input_part} -OutMrc {out_micrograph} -kV {self.voltage} -Iter 3 -Bft 150 "
+                f"{self._get_gain_command_part(in_micrograph)} -PixSize {self.apix} "
+                f"-Gpu {' '.join([str(x) for x in self.gpus])} -UseGpus {self.use_gpus}")
 
     def run(self, in_micrograph: pathlib.Path, out_micrograph: pathlib.Path, skip_if_results_exist=True):
         # Output must be mrc

@@ -54,6 +54,8 @@ class CemprocProcessingHandler(ExperimentModuleBase):
                 "lmod_path": cconf["lmod_path"],
                 "movie_patterns": exp_engine.data_rules.get_target_for({"raw", "movie"}),
                 "gain_patterns": exp_engine.data_rules.get_target_for({"raw", "gain"}),
+                "gpu_list": cconf.get("gpu_list", [0]),
+                "use_gpus": cconf.get("use_gpus", 1),
                 "run_mode": "single",
             },
             exp_engine.exp.processing.workflow

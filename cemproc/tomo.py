@@ -56,7 +56,8 @@ class CemcofTomoWorkflow:
             pre_dose=args.pre_dose,
             frame_dose=args.frame_dose,
             gain_file=args.get('gain_file', None),
-            gpu_id=0)
+            gpus=args.gpu_list,
+            use_gpus=args.use_gpus)
 
         self.ctf_runner = CtfFind5(
             lmod=lmod_provider.with_modules(args.get('ctf_module', 'ctffind/5.0.2')),
