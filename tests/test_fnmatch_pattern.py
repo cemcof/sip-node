@@ -44,7 +44,8 @@ class TestFnMatchPattern(unittest.TestCase):
             ("tomo*/*", "tomo123/file.txt", True),
             ("tomo*/*", "tomo/file.txt", True),
             ("tomo*/*", "tomo123/dir/file.txt", True),
-            ("tomo*/*", "_run/mic.tif", False),
+            ("tomo*/*", "_run/map-6-A_ts_001_-18.0.mrc", False),
+            ("proc_*/*", "_run/map-6-A_ts_001_-18.0.mrc", False),
 
             ("**/*.yml", "config.yml", True)
 
