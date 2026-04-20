@@ -22,10 +22,9 @@ class CryosparcWrapper(StateObj):
         self.exp_engine = exp_engine
         self.exp = exp_engine.exp
         self.config = config
-        self.python_exec = config.get("python_exec", "python3")
         self.cryosparc_cli_path = config.get("cryosparc_cli_path", "cryosparc/cli.py")
         self.cm_path = config["cm_path"]
-
+        self.cryosparc_env_provider = common.FromShellEnvironmentSetup([self.cm_path, "env"])
         target_loc = self.exp_engine.resolve_target_location()
         # Pokracovat tady - zadny processed target rule neni
         self.projects_dir = target_loc if target_loc else pathlib.Path(config["projects_dir"])
@@ -39,14 +38,16 @@ class CryosparcWrapper(StateObj):
         self.em_handler = em_tools
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
-        args = [self.python_exec, self.cryosparc_cli_path, "-e", self.email, "--cm", self.cm_path, subprogram]
+        # Obtain correct environment
+        env = self.cryosparc_env_provider()
+        args = ["python", self.cryosparc_cli_path, "-e", self.email, subprogram]
         for key, value in args_extra.items():
             args.append(key)
             args.append(value)
             
         self.exp_engine.logger.info(f"Invoking cryosparc engine: {' '.join(args)}")
         try:
-            pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True)
+            pc = subprocess.run(args, text=True, input=stdin, capture_output=True, check=True, env=env)
         except subprocess.CalledProcessError as e:
             print("ERRR")
             print(e.stdout, e.stderr)
@@ -76,6 +77,7 @@ class CryosparcWrapper(StateObj):
         workflow["exposure"] = {
             "file_engine_watch_path_abs" : str(self.raw_data_dir / path_to_movies_relative),
             "file_engine_filter" : f"*{movie_info[0].suffix}",
+            "file_engine_enable": True
         }
 
         # Gain ref 
@@ -91,21 +93,22 @@ class CryosparcWrapper(StateObj):
         try:
             meta = self.exp_engine.read_metadata()
             dose = meta["DATA_fmDose"] * 8 # FROM METADATA * meta["DATA_imageSizeZ"]
-            workflow["mscope_params"]["total_dose_e_per_A2"] = dose
+            workflow["total_dose_e_per_A2"] = dose
             self.exp_engine.logger.info(f"Computed dose per stack: {dose}")
         except Exception as e:
             self.exp_engine.logger.error(f"Error during dose computation: {e}")
             raise
 
         # Some computed values
-        apix = float(workflow["mscope_params"]["psize_A"])
-        particle_diameter = float(workflow["blob_pick"]["diameter"])
-        common.set_dict_val_by_path(workflow, "motion_settings/res_max_align", np.ceil(4.0 * apix))
-        common.set_dict_val_by_path(workflow, "ctf_settings/res_max_align", np.floor(3.0 * apix))
-        common.set_dict_val_by_path(workflow, "blob_pick/diameter", 0.8 * particle_diameter)
-        common.set_dict_val_by_path(workflow, "blob_pick/diameter_max", 1.2 * particle_diameter)
-        common.set_dict_val_by_path(workflow, "extraction/box_size_pix", round((1.5 * particle_diameter / apix) / 2) * 2)
-        
+        apix = float(workflow["psize_A"])
+        particle_diameter = float(workflow["diameter"])
+        workflow["gainref_flip_y"] = "tif" in workflow["exposure"]["file_engine_filter"]
+        workflow["motion_res_max_align"] = np.ceil(4.0 * apix)
+        workflow["ctf_res_max_align"] = np.floor(3.0 * apix)
+        workflow["blob_diameter_min"] = 0.8 * particle_diameter
+        workflow["blob_diameter_max"] = 1.2 * particle_diameter
+        workflow["box_size_pix"] = round((1.5 * particle_diameter / apix) / 2) * 2
+
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
         # Directory must exist or cryosparc fails
