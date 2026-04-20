@@ -13,6 +13,32 @@ import common
 from cryosparc.reporting import CryosparcReport
 from experiment import ExperimentModuleBase, ExperimentStorageEngine, ExperimentsApi, JobState, ProcessingState
 
+class ProjectInfo:
+    def __init__(self, project_id: str, session_id: str, dirname: str):
+        self.project_id = project_id
+        self.session_id = session_id
+        self.dirname = dirname
+
+    # Try parse
+    @staticmethod
+    def try_parse(s: str):
+        # Expected format: "P1/S1/CS-projname", use simple split
+        if not s:
+            return None
+        parts = s.strip().split("/")
+        if len(parts) != 3:
+            return None
+        return ProjectInfo(parts[0], parts[1], parts[2])
+
+    # Parse
+    @staticmethod
+    def parse(s :str):
+        res = ProjectInfo.try_parse(s)
+        if res:
+            return res
+        raise ValueError(f"Error parsing project info: {s}")
+
+
 class CryosparcWrapper(StateObj):
     """ Connects LIMS experiments and their processing with the cryosparc engine"""
     def __init__(self, 
@@ -28,14 +54,23 @@ class CryosparcWrapper(StateObj):
         target_loc = self.exp_engine.resolve_target_location()
         # Pokracovat tady - zadny processed target rule neni
         self.projects_dir = target_loc if target_loc else pathlib.Path(config["projects_dir"])
-        self.project_path = self.projects_dir / f"cryosparc_{exp_engine.exp.secondary_id}"
-        self.project_name = self.project_path.name
+        self.project_info_opt = ProjectInfo.try_parse(self.exp.processing.pid)
         self.raw_data_dir = target_loc if target_loc else self.projects_dir / f"raw_cryosparc_{exp_engine.exp.secondary_id}"
 
         self.email = config["email"]
         self.cluster = config["computational_cluster"]
         self.gpu_count = config.get("gpu_count", 1)
         self.em_handler = em_tools
+
+    @property
+    def project_path(self):
+        return self.projects_dir / self.project_info.dirname if self.project_info_opt else None
+
+    @property
+    def project_info(self) -> ProjectInfo:
+        if self.project_info_opt is None:
+            raise AttributeError("Project info not set")
+        return self.project_info_opt
 
     def _invoke_cryosparc_cli(self, subprogram: str, args_extra: dict, stdin: str):
         # Obtain correct environment
@@ -58,7 +93,8 @@ class CryosparcWrapper(StateObj):
     
     def create_project(self):
         args = {
-            "-p": str(self.project_path),
+            "-p": str(self.projects_dir),
+            "-n": str(self.exp.secondary_id),
             "-c": self.cluster,
             "-w": "-",
             "-g": str(self.gpu_count)
@@ -111,16 +147,16 @@ class CryosparcWrapper(StateObj):
 
         # Invoke the cryosparc engine
         self.exp_engine.logger.info(f"Creating cryosparc project at {self.project_path} with workflow: {json.dumps(workflow, indent=2)}")
-        # Directory must exist or cryosparc fails
-        self.project_path.mkdir(parents=True, exist_ok=True)
+        self.projects_dir.mkdir(parents=True, exist_ok=True)
         stdout, stderr = self._invoke_cryosparc_cli("create", args, stdin=json.dumps(workflow))
         self.exp_engine.logger.info(f"Created cryosparc project {stdout}")
         self.exp.processing.pid = stdout.strip()
+        self.project_info_opt = ProjectInfo.parse(self.exp.processing.pid)
         self.exp.processing.state = ProcessingState.READY        
         return True
     
     def run_project(self):
-        project_id, session_id = self.exp.processing.pid.split("/")
+        project_id, session_id = self.project_info.project_id, self.project_info.session_id
         args = {
             "--pid": project_id,
             "--sid": session_id
@@ -131,7 +167,7 @@ class CryosparcWrapper(StateObj):
         self.exp.processing.state = ProcessingState.RUNNING
 
     def stop_project(self): 
-        project_id, session_id = self.exp.processing.pid.split("/")
+        project_id, session_id = self.project_info.project_id, self.project_info.session_id
         args = {
             "--pid": project_id,
             "--sid": session_id
@@ -141,7 +177,10 @@ class CryosparcWrapper(StateObj):
         self.exp_engine.logger.info(f"Stopped cryosparc project {project_id} and session {session_id}")
 
     def create_and_submit_report(self):
-        report = CryosparcReport(self.project_path)
+        pp = self.project_path
+        if not pp:
+            raise ValueError("No project path specified")
+        report = CryosparcReport(pp)
         try:
             report_path = report.create_report()
             with open(report_path, "rb") as stream:

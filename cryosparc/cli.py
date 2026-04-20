@@ -55,12 +55,12 @@ class CryosparcEngine:
         del workflow["exposure"]
         self.api.sessions.update_session_params(project_uid, session_uid, workflow)
 
-    def create_project(self, project_path: pathlib.Path, workflow):
-        project_container_dir, project_dir, project_name = project_path.parent, project_path, str(project_path.name)
+    def create_project(self, project_path: pathlib.Path, project_name: str, workflow):
 
         # Create project using new v5 API
-        project = self.api.projects.create(parent_dir=str(project_container_dir), title=project_name)
+        project = self.api.projects.create(parent_dir=str(project_path), title=project_name)
         project_uid = project.uid
+        project_dirname = pathlib.Path(project.project_dir).name
 
         # Create a new Live session using new v5 API
         session = self.api.sessions.create(project_uid, title=f"{project_name} Live Session")
@@ -70,7 +70,7 @@ class CryosparcEngine:
         self._configure_project(project_uid, session_uid, workflow)
         
         # Write the project and session id to the output
-        print(f"{project_uid}/{session_uid}", file=self.file_out)
+        print(f"{project_uid}/{session_uid}/{project_dirname}", file=self.file_out)
  
     def run_project_session(self, session_id, project_id):
         self.api.sessions.start(project_id, session_id)
@@ -119,7 +119,8 @@ if __name__ == "__main__":
     
     setup_parser = subparsers.add_parser('create')
     setup_parser.set_defaults(func="create_project")
-    setup_parser.add_argument("-p", "--project-path", dest="project_path", type=pathlib.Path, help="Path to the project, last part of this path will be used as a project name/title", required=True)
+    setup_parser.add_argument("-p", "--project-path", dest="project_path", type=pathlib.Path, help="Path to the project parent dir", required=True)
+    setup_parser.add_argument("-n", "--project-name", dest="project_name", type=str, help="Title of the project", required=True)
     setup_parser.add_argument("-c", "--cluster", dest="cluster", help="Computational cluster", required=True)
     setup_parser.add_argument("-g", "--gpus", dest="gpu_count", help="Number of GPUs", type=int, default=1)
     setup_parser.add_argument("-w", "--workflow-file", dest="workflow", help="Path to the file with JSON workflow for the project, - for stdin", required=True, type=argparse.FileType(encoding='utf-8'))
